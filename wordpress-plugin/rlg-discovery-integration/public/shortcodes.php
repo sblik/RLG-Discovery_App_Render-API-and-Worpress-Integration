@@ -286,8 +286,8 @@ function rlg_shortcode_index($atts) {
                         <div class="rlg-form-group">
                             <label>Party Name</label>
                             <select name="party" id="index-party">
-                                <option value="Client" selected>Client (light blue rows)</option>
-                                <option value="OP">OP (light orange rows)</option>
+                                <option value="Client" selected>Client (light green rows)</option>
+                                <option value="OP">OP (light blue rows)</option>
                             </select>
                         </div>
                         <div class="rlg-form-group">
