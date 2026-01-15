@@ -33,7 +33,7 @@ function rlg_discovery_enqueue_scripts() {
     wp_enqueue_script('rlg-discovery-client', RLG_DISCOVERY_URL . 'public/js/api-client.js', array('jquery', 'pdf-js', 'jszip'), '1.2.0', true);
 
     // Pass API URL and PDF.js worker URL to JS
-    $api_url = get_option('rlg_discovery_api_url', 'https://rlg-discovery-app-render-api-and.onrender.com');
+    $api_url = get_option('rlg_discovery_api_url', 'https://rlg-discovery-app-render-api-and-w0b0.onrender.com');
     wp_localize_script('rlg-discovery-client', 'rlgSettings', array(
         'apiUrl' => rtrim($api_url, '/'),
         'pdfWorkerUrl' => 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
