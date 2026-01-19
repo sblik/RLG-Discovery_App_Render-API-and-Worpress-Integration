@@ -123,7 +123,7 @@ function rlg_shortcode_bates($atts) {
                         </div>
                         <div class="rlg-form-group">
                             <label>Padding (pt)</label>
-                            <input type="number" name="zone_padding" id="bates-padding" value="18" min="6" max="144">
+                            <input type="number" name="zone_padding" id="bates-padding" value="18" min="1" max="144">
                         </div>
                     </section>
                     <section class="rlg-section-flex rlg-divider">
@@ -286,8 +286,8 @@ function rlg_shortcode_index($atts) {
                         <div class="rlg-form-group">
                             <label>Party Name</label>
                             <select name="party" id="index-party">
-                                <option value="Client" selected>Client (light blue rows)</option>
-                                <option value="OP">OP (light orange rows)</option>
+                                <option value="Client" selected>Client (light green rows)</option>
+                                <option value="OP">OP (light blue rows)</option>
                             </select>
                         </div>
                         <div class="rlg-form-group">

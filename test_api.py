@@ -3,7 +3,7 @@ import os
 
 # Base URL (assuming running locally on default port)
 # Base URL (Live Render Deployment)
-BASE_URL = "https://discovery-api-b4c9.onrender.com"
+BASE_URL = "https://rlg-discovery-app-render-api-and-w0b0.onrender.com"
 
 def test_home():
     import time

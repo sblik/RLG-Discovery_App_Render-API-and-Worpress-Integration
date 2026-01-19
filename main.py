@@ -143,7 +143,8 @@ async def bates_endpoint(
     zone_padding: float = Form(18.0),
     color_hex: str = Form("#0000FF"),
     left_punch_margin: float = Form(0.0),
-    border_all_pt: float = Form(0.0)
+    border_all_pt: float = Form(0.0),
+    diagnostics: bool = Form(False)
 ):
     """
     Apply Bates labels to PDFs and Images.
@@ -175,7 +176,8 @@ async def bates_endpoint(
             zone_padding=zone_padding,
             color_rgb=color_rgb,
             left_punch_margin=left_punch_margin,
-            border_all_pt=border_all_pt
+            border_all_pt=border_all_pt,
+            diagnostics=diagnostics
         )
         
         # Create ZIP of labeled files
