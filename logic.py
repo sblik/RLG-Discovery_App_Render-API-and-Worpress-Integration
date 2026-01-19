@@ -709,12 +709,23 @@ def _overlay_pdf(
     label: str,
     w: float, h: float,
     font_name: str, font_size: int,
-    margin_right: float, margin_bottom: float,
+    label_x: float, label_y: float,
     color_rgb: Tuple[int,int,int],
     left_punch_margin: float = 0.0,
     border_all_pt: float = 0.0,
 ) -> bytes:
-    """Create a PDF overlay with the Bates label and return as bytes."""
+    """Create a PDF overlay with the Bates label and return as bytes.
+
+    Args:
+        label: The Bates label text
+        w, h: Page dimensions (MediaBox width/height)
+        font_name, font_size: Font settings
+        label_x: X position for right edge of label (in page coordinates)
+        label_y: Y position for baseline of label (in page coordinates)
+        color_rgb: Label color as (r, g, b) tuple
+        left_punch_margin: Optional left margin for 3-hole punch
+        border_all_pt: Optional border around all edges
+    """
     from io import BytesIO
     r, g, b = color_rgb
     packet = BytesIO()
@@ -735,9 +746,7 @@ def _overlay_pdf(
 
     can.setFont(font_name, font_size)
     can.setFillColor(Color(r/255, g/255, b/255))
-    eff_mr = max(margin_right, border_all_pt or 0.0)
-    eff_mb = max(margin_bottom, border_all_pt or 0.0)
-    can.drawRightString(w - eff_mr, eff_mb, label)
+    can.drawRightString(label_x, label_y, label)
 
     can.save()
     return packet.getvalue()
@@ -860,7 +869,21 @@ def walk_and_label(
     color_rgb: Tuple[int,int,int],
     left_punch_margin: float = 0.0,
     border_all_pt: float = 0.0,
+    diagnostics: bool = False,
 ) -> Tuple[List[BatesRecord], int, List[Tuple[str,bytes]]]:
+    logger = logging.getLogger(__name__)
+    if diagnostics:
+        logger.setLevel(logging.DEBUG)
+        # Ensure we have a handler that outputs debug messages
+        if not logger.handlers:
+            handler = logging.StreamHandler()
+            handler.setLevel(logging.DEBUG)
+            handler.setFormatter(logging.Formatter('%(levelname)s - %(message)s'))
+            logger.addHandler(handler)
+        logger.debug("=== BATES LABELING DIAGNOSTICS ENABLED ===")
+        logger.debug(f"Zone: {zone}, Zone Padding: {zone_padding}, Font: {font_name} {font_size}pt")
+        logger.debug(f"Margins: right={margin_right}, bottom={margin_bottom}, left_punch={left_punch_margin}, border={border_all_pt}")
+
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp = Path(tmp_dir)
         staged = tmp / "staged"
@@ -904,27 +927,77 @@ def walk_and_label(
                     pdf = pikepdf.open(str(src))
 
                     for page_num, page in enumerate(pdf.pages):
-                        # Get page dimensions from mediabox
+                        # Get page dimensions from mediabox (defines full page for overlay)
                         mbox = page.mediabox
-                        w = float(mbox[2]) - float(mbox[0])
-                        h = float(mbox[3]) - float(mbox[1])
+                        mbox_x1, mbox_y1 = float(mbox[0]), float(mbox[1])
+                        mbox_x2, mbox_y2 = float(mbox[2]), float(mbox[3])
+                        w = mbox_x2 - mbox_x1
+                        h = mbox_y2 - mbox_y1
+
+                        # Get CropBox for label positioning (defines visible area)
+                        # If CropBox exists and differs from MediaBox, use it for positioning
+                        cropbox = getattr(page, 'cropbox', None)
+                        if cropbox is not None:
+                            crop_x1, crop_y1 = float(cropbox[0]), float(cropbox[1])
+                            crop_x2, crop_y2 = float(cropbox[2]), float(cropbox[3])
+                        else:
+                            # No CropBox, use MediaBox for positioning
+                            crop_x1, crop_y1 = mbox_x1, mbox_y1
+                            crop_x2, crop_y2 = mbox_x2, mbox_y2
+
+                        # Visible dimensions (for margin calculations)
+                        visible_w = crop_x2 - crop_x1
+                        visible_h = crop_y2 - crop_y1
 
                         label = _format_label(prefix, current, digits, with_space=True)
 
                         # Calculate margins dynamically if zone is provided
+                        # Use visible dimensions for consistent positioning
                         mr, mb = margin_right, margin_bottom
                         if zone:
                             mr, mb = _compute_margins_for_page(
-                                zone, w, h, label, font_name, font_size, zone_padding, border_all_pt
+                                zone, visible_w, visible_h, label, font_name, font_size, zone_padding, border_all_pt
                             )
+
+                        # Calculate absolute label position based on visible area (CropBox)
+                        # For Bottom Right: label_x is margin from right edge of visible area
+                        #                   label_y is margin from bottom edge of visible area
+                        eff_mr = max(mr, border_all_pt or 0.0)
+                        eff_mb = max(mb, border_all_pt or 0.0)
+
+                        if zone and zone.startswith("Bottom Left"):
+                            label_x = crop_x1 + eff_mr  # From left edge of visible area
+                        elif zone and zone.startswith("Bottom Center"):
+                            # Center: measure text width and center it
+                            tw, _ = _measure_text_px(label, font_name, font_size)
+                            label_x = crop_x1 + (visible_w + tw) / 2.0
+                        else:  # Bottom Right (default)
+                            label_x = crop_x2 - eff_mr  # From right edge of visible area
+
+                        label_y = crop_y1 + eff_mb  # From bottom edge of visible area
 
                         # For left punch margin, include it in the overlay (white rectangle)
                         overlay_margin = left_punch_margin if left_punch_margin and left_punch_margin > 0 else 0
 
-                        # Create overlay PDF bytes
+                        # Diagnostic logging for page structure
+                        if diagnostics:
+                            trimbox = getattr(page, 'trimbox', None)
+                            logger.debug(f"--- File: {fname}, Page {page_num + 1} ---")
+                            logger.debug(f"  MediaBox: [{mbox_x1:.2f}, {mbox_y1:.2f}, {mbox_x2:.2f}, {mbox_y2:.2f}]")
+                            logger.debug(f"  MediaBox dimensions: {w:.2f} x {h:.2f} pts ({w/72:.2f}\" x {h/72:.2f}\")")
+                            if cropbox is not None:
+                                logger.debug(f"  CropBox: [{crop_x1:.2f}, {crop_y1:.2f}, {crop_x2:.2f}, {crop_y2:.2f}]")
+                                logger.debug(f"  CropBox dimensions: {visible_w:.2f} x {visible_h:.2f} pts ({visible_w/72:.2f}\" x {visible_h/72:.2f}\")")
+                            if trimbox:
+                                logger.debug(f"  TrimBox: {[float(x) for x in trimbox]}")
+                            logger.debug(f"  Calculated margins: right={eff_mr:.2f}pt, bottom={eff_mb:.2f}pt")
+                            logger.debug(f"  Label '{label}' absolute position: x={label_x:.2f}pt, y={label_y:.2f}pt")
+                            logger.debug(f"  Overlay rect: [{mbox_x1:.2f}, {mbox_y1:.2f}, {mbox_x2:.2f}, {mbox_y2:.2f}]")
+
+                        # Create overlay PDF bytes with absolute label position
                         overlay_bytes = _overlay_pdf(
                             label, w, h, font_name, font_size,
-                            mr, mb, color_rgb,
+                            label_x, label_y, color_rgb,
                             overlay_margin, border_all_pt
                         )
 
@@ -933,9 +1006,9 @@ def walk_and_label(
                         overlay_page = overlay_pdf.pages[0]
 
                         # Use pikepdf's add_overlay to merge the label onto the page
-                        # Rectangle covers the full page to position the label correctly
+                        # Rectangle must use actual mediabox coordinates to handle pages with non-zero origins
                         dest_page = PikePage(page)
-                        dest_page.add_overlay(overlay_page, PikeRectangle(0, 0, w, h))
+                        dest_page.add_overlay(overlay_page, PikeRectangle(mbox_x1, mbox_y1, mbox_x2, mbox_y2))
 
                         overlay_pdf.close()
                         current += 1
