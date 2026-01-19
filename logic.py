@@ -37,11 +37,12 @@ except Exception:
 # Optional: pikepdf for unlocking & repair
 try:
     import pikepdf
-    from pikepdf import PasswordError, PdfError
+    from pikepdf import PasswordError, PdfError, Page as PikePage, Rectangle as PikeRectangle
     PIKEPDF_AVAILABLE = True
 except Exception:
     pikepdf = None
     PasswordError = PdfError = Exception
+    PikePage = PikeRectangle = None
     PIKEPDF_AVAILABLE = False
 
 # Optional: PyMuPDF
@@ -712,7 +713,8 @@ def _overlay_pdf(
     color_rgb: Tuple[int,int,int],
     left_punch_margin: float = 0.0,
     border_all_pt: float = 0.0,
-) -> PdfReader:
+) -> bytes:
+    """Create a PDF overlay with the Bates label and return as bytes."""
     from io import BytesIO
     r, g, b = color_rgb
     packet = BytesIO()
@@ -726,8 +728,7 @@ def _overlay_pdf(
         can.rect(0, 0, B, h, stroke=0, fill=1)
         can.rect(w - B, 0, B, h, stroke=0, fill=1)
 
-    # Fallback for older PyPDF2 versions without Transformation support:
-    # Draw white rectangle to cover left margin area
+    # Draw white rectangle to cover left margin area for punch margin
     if left_punch_margin and left_punch_margin > 0:
         can.setFillColor(Color(1, 1, 1))
         can.rect(0, 0, left_punch_margin, h, stroke=0, fill=1)
@@ -739,8 +740,7 @@ def _overlay_pdf(
     can.drawRightString(w - eff_mr, eff_mb, label)
 
     can.save()
-    packet.seek(0)
-    return PdfReader(packet)
+    return packet.getvalue()
 
 def _label_image(
     in_file: Path, out_file: Path, label: str,
@@ -897,34 +897,19 @@ def walk_and_label(
                 pages_count = 0
 
                 try:
-                    reader = PdfReader(str(src))
-                    if getattr(reader, "is_encrypted", False):
-                        try:
-                            reader.decrypt("")
-                        except Exception:
-                            continue
+                    # Use pikepdf for robust PDF handling (avoids PyPDF2 merge_page corruption)
+                    if not PIKEPDF_AVAILABLE:
+                        raise RuntimeError("pikepdf is required for Bates labeling")
 
-                    writer = PdfWriter()
-                    for page in reader.pages:
-                        w, h = _page_size(page)
+                    pdf = pikepdf.open(str(src))
+
+                    for page_num, page in enumerate(pdf.pages):
+                        # Get page dimensions from mediabox
+                        mbox = page.mediabox
+                        w = float(mbox[2]) - float(mbox[0])
+                        h = float(mbox[3]) - float(mbox[1])
+
                         label = _format_label(prefix, current, digits, with_space=True)
-
-                        # Apply scaling transformation for left punch margin
-                        # This scales content to fit and shifts it right, preserving all content
-                        use_transform = False
-                        if left_punch_margin and left_punch_margin > 0 and Transformation is not None:
-                            try:
-                                scale = (w - left_punch_margin) / w
-                                # Scale uniformly to maintain aspect ratio, then translate right
-                                # The vertical offset centers the scaled content vertically
-                                vertical_offset = (h - (h * scale)) / 2
-                                op = Transformation().scale(scale, scale).translate(
-                                    left_punch_margin, vertical_offset
-                                )
-                                page.add_transformation(op)
-                                use_transform = True
-                            except Exception:
-                                use_transform = False
 
                         # Calculate margins dynamically if zone is provided
                         mr, mb = margin_right, margin_bottom
@@ -933,21 +918,31 @@ def walk_and_label(
                                 zone, w, h, label, font_name, font_size, zone_padding, border_all_pt
                             )
 
-                        # If transformation was used, don't pass left_punch_margin to overlay
-                        # (no need for white rectangle). Otherwise, use fallback white rectangle.
-                        overlay_margin = 0 if use_transform else left_punch_margin
-                        overlay = _overlay_pdf(
+                        # For left punch margin, include it in the overlay (white rectangle)
+                        overlay_margin = left_punch_margin if left_punch_margin and left_punch_margin > 0 else 0
+
+                        # Create overlay PDF bytes
+                        overlay_bytes = _overlay_pdf(
                             label, w, h, font_name, font_size,
                             mr, mb, color_rgb,
                             overlay_margin, border_all_pt
                         )
-                        page.merge_page(overlay.pages[0])
-                        writer.add_page(page)
+
+                        # Open overlay with pikepdf and merge onto page
+                        overlay_pdf = pikepdf.open(io.BytesIO(overlay_bytes))
+                        overlay_page = overlay_pdf.pages[0]
+
+                        # Use pikepdf's add_overlay to merge the label onto the page
+                        # Rectangle covers the full page to position the label correctly
+                        dest_page = PikePage(page)
+                        dest_page.add_overlay(overlay_page, PikeRectangle(0, 0, w, h))
+
+                        overlay_pdf.close()
                         current += 1
                         pages_count += 1
 
-                    with open(out, "wb") as f:
-                        writer.write(f)
+                    pdf.save(str(out))
+                    pdf.close()
 
                     labeled_pairs.append((str(out.relative_to(output)), out.read_bytes()))
 
