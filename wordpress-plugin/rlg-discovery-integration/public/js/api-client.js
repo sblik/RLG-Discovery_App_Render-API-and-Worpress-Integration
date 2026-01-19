@@ -45,7 +45,7 @@ jQuery(document).ready(function ($) {
             return;
         }
 
-        var prefix = $('#bates-prefix').val() || 'J.DOE';
+        var prefix = $('#bates-prefix').val();
         var startNum = parseInt($('#bates-start').val()) || 1;
         var digits = parseInt($('#bates-digits').val()) || 8;
         var colorHex = $('#bates-color').val() || '#0000FF';
@@ -163,7 +163,7 @@ jQuery(document).ready(function ($) {
         if (!ctx) return;
 
         // Get form values
-        var prefix = $('#bates-prefix').val() || 'J.DOE';
+        var prefix = $('#bates-prefix').val();
         var startNum = parseInt($('#bates-start').val()) || 1;
         var digits = parseInt($('#bates-digits').val()) || 8;
         var colorHex = $('#bates-color').val() || '#0000FF';
@@ -1158,7 +1158,7 @@ jQuery(document).ready(function ($) {
                     lastBatesFilename = 'bates_labeled.zip';
 
                     // Use actual page counts from batesPreviewState if available
-                    var prefix = $('#bates-prefix').val() || 'J.DOE';
+                    var prefix = $('#bates-prefix').val();
                     var startNum = parseInt($('#bates-start').val()) || 1;
                     var digits = parseInt($('#bates-digits').val()) || 8;
 

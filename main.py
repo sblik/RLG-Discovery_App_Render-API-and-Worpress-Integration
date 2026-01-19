@@ -132,7 +132,7 @@ async def organize_endpoint(
 @app.post("/bates")
 async def bates_endpoint(
     files: List[UploadFile] = File(...),
-    prefix: str = Form("J.DOE"),
+    prefix: str = Form(""),
     start_num: int = Form(1),
     digits: int = Form(8),
     font_name: str = Form("Helvetica"),

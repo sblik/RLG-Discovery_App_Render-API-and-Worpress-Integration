@@ -92,7 +92,7 @@ function rlg_shortcode_bates($atts) {
                         <h4>Label</h4>
                         <div class="rlg-form-group">
                             <label>Prefix</label>
-                            <input type="text" name="prefix" id="bates-prefix" value="J.DOE">
+                            <input type="text" name="prefix" id="bates-prefix" value="">
                         </div>
                         <div class="rlg-form-group">
                             <label>Start Number</label>
