@@ -1029,6 +1029,28 @@ section.rlg-page-options {
         color: #f1f5f9;
     }
 
+    .rlg-form-group input[type="text"]:hover,
+    .rlg-form-group input[type="number"]:hover,
+    .rlg-form-group input[type="password"]:hover,
+    .rlg-form-group select:hover,
+    .rlg-form-group textarea:hover {
+        border-color: #9ca3af;
+        background-color: #0f172a;
+        color: #f1f5f9;
+    }
+
+    .rlg-form-group input[type="text"]:focus,
+    .rlg-form-group input[type="number"]:focus,
+    .rlg-form-group input[type="password"]:focus,
+    .rlg-form-group select:focus,
+    .rlg-form-group textarea:focus {
+        outline: none;
+        border-color: var(--rlg-accent);
+        box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+        background-color: #0f172a;
+        color: #f1f5f9;
+    }
+
     .rlg-form-group input[type="file"] {
         background-color: #1e293b;
         border-color: #475569;
