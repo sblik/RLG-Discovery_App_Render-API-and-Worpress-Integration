@@ -204,9 +204,6 @@ function rlg_shortcode_redact($atts) {
                 <div class="rlg-form-group">
                     <div class="rlg-checkbox-group">
                         <label><input type="checkbox" name="presets" value="SSN" checked> SSN</label>
-                        <label><input type="checkbox" name="presets" value="Email"> Email</label>
-                        <label><input type="checkbox" name="presets" value="Phone"> Phone</label>
-                        <label><input type="checkbox" name="presets" value="Date"> Date</label>
                     </div>
                 </div>
             </section>

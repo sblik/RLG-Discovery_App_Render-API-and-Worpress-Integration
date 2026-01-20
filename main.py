@@ -284,7 +284,7 @@ async def index_endpoint(
 @app.post("/redact")
 async def redact_endpoint(
     file: UploadFile = File(...), # ZIP or PDF
-    presets: List[str] = Form(["SSN"]),
+    presets: List[str] = Form([]),
     regex_patterns: Optional[str] = Form(None), # newline separated
     literal_patterns: Optional[str] = Form(None), # comma separated
     case_sensitive: bool = Form(False),
