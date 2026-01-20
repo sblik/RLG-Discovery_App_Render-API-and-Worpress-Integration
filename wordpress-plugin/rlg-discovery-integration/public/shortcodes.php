@@ -210,12 +210,18 @@ function rlg_shortcode_redact($atts) {
             <section class="rlg-section-flex rlg-divider">
                 <h4>Custom Patterns</h4>
                 <div class="rlg-form-group">
-                    <label>Regex Patterns (one per line)</label>
-                    <textarea name="regex_patterns" rows="3" placeholder="e.g., \b\d{4}-\d{4}\b"></textarea>
-                </div>
-                <div class="rlg-form-group">
                     <label>Literal Patterns (comma separated)</label>
                     <input type="text" name="literal_patterns" placeholder="e.g., CONFIDENTIAL, SECRET">
+                </div>
+                <div class="rlg-form-group rlg-checkbox-toggle">
+                    <label>
+                        <input type="checkbox" id="toggle-advanced-regex" data-target="advanced-regex-field">
+                        Advanced: Use Regex
+                    </label>
+                </div>
+                <div class="rlg-form-group rlg-toggle-field" id="advanced-regex-field" style="display: none;">
+                    <label>Regex Patterns (one per line)</label>
+                    <textarea name="regex_patterns" rows="3" placeholder="e.g., \b\d{4}-\d{4}\b"></textarea>
                 </div>
                 <div class="rlg-form-group rlg-checkbox-toggle">
                     <label>
