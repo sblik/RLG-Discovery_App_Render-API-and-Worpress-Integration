@@ -684,9 +684,10 @@ section.rlg-page-options {
     border: 1px solid #e2e8f0;
     border-radius: var(--rlg-radius-section);
     min-height: 300px;
+    max-height: 700px;
     display: flex;
     flex-direction: column;
-    overflow: hidden;
+    overflow-y: auto;
 }
 
 /* Placeholder state */
@@ -881,6 +882,7 @@ section.rlg-page-options {
 
 .rlg-index-preview-table tbody tr.rlg-party-client:hover {
     background-color: #e1fedb;
+/*    e1fedb*/
 }
 
 .rlg-index-preview-table tbody tr.rlg-party-op {
@@ -1115,6 +1117,7 @@ section.rlg-page-options {
 
     .rlg-index-preview-table td {
         border-color: #334155;
+        color: #111827;
     }
 
     .rlg-index-preview-table tbody tr:hover {
@@ -1122,11 +1125,11 @@ section.rlg-page-options {
     }
 
     .rlg-index-preview-table tbody tr.rlg-party-client {
-        background-color: rgba(59, 130, 246, 0.15);
+        background-color: #effff2;
     }
 
     .rlg-index-preview-table tbody tr.rlg-party-op {
-        background-color: rgba(251, 146, 60, 0.15);
+        background-color: #edf7ff;
     }
 
     .rlg-preview-file-selector {
@@ -1151,5 +1154,11 @@ section.rlg-page-options {
 
     .rlg-color-badge {
         border-color: rgba(255, 255, 255, 0.2);
+    }
+
+    .rlg-index-preview-table tbody tr.rlg-party-client:hover {
+        background-color: #e1fedb;
+        color: black;
+        /*    e1fedb*/
     }
 }
