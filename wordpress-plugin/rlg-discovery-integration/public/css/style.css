@@ -816,6 +816,22 @@ section.rlg-page-options {
     color: var(--rlg-text-secondary);
 }
 
+/* Final Bates number message */
+.rlg-final-number {
+    margin-top: 12px;
+    padding: 12px 16px;
+    background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+    border: 1px solid #a7f3d0;
+    border-radius: 10px;
+    font-size: 14px;
+    color: #065f46;
+    text-align: center;
+}
+
+.rlg-final-number strong {
+    color: #047857;
+}
+
 /* Table preview (Index) */
 .rlg-preview-table-container {
     padding: 1rem;

@@ -100,7 +100,7 @@ function rlg_shortcode_bates($atts) {
                         </div>
                         <div class="rlg-form-group">
                             <label>Digits</label>
-                            <input type="number" name="digits" id="bates-digits" value="8" min="6" max="10">
+                            <input type="number" name="digits" id="bates-digits" value="6" min="6" max="10">
                         </div>
                         <div class="rlg-form-group">
                             <label>Font Size (pt)</label>
@@ -180,6 +180,7 @@ function rlg_shortcode_bates($atts) {
                         <div class="rlg-preview-info"></div>
                     </div>
                 </div>
+                <div id="bates-final-number" class="rlg-final-number" style="display: none;"></div>
             </div>
         </div>
     </div>
