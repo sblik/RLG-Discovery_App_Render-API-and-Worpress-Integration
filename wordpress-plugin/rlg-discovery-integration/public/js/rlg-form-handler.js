@@ -68,6 +68,16 @@
                     lastBates.files = [];
                     var currentNum = startNum;
 
+                    // Helper to extract category from file path
+                    function getCategoryFromPath(fullPath) {
+                        if (!fullPath) return '';
+                        var parts = fullPath.split('/');
+                        if (parts.length > 1) {
+                            return parts[parts.length - 2];
+                        }
+                        return '';
+                    }
+
                     if (batesState.files && batesState.files.length > 0) {
                         // Use preview state which has actual page counts
                         batesState.files.forEach(function(file) {
@@ -77,7 +87,7 @@
 
                             lastBates.files.push({
                                 name: file.name,
-                                category: '',
+                                category: getCategoryFromPath(file.fullPath),
                                 batesRange: pageCount > 1 ? firstLabel + ' - ' + lastLabel : firstLabel
                             });
                             currentNum += pageCount;
@@ -136,6 +146,6 @@
             });
     });
 
-    console.log('RLG Discovery Integration v1.4.0 initialized');
+    console.log('RLG Discovery Integration v1.4.1 initialized');
 
 })(jQuery);
