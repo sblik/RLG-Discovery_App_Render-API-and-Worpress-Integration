@@ -60,8 +60,22 @@
             year: 'numeric'
         });
 
+        function extractFirstBatesNumber(batesRange) {
+            if (!batesRange) return Infinity;
+            var match = batesRange.match(/(\d{6,10})/);
+            return match ? parseInt(match[1], 10) : Infinity;
+        }
+
+        // Sort files by Bates number before rendering
+        var sortOrder = indexState.sortOrder || 'asc';
+        var sortedFiles = files.slice().sort(function(a, b) {
+            var numA = extractFirstBatesNumber(a.batesRange);
+            var numB = extractFirstBatesNumber(b.batesRange);
+            return sortOrder === 'asc' ? numA - numB : numB - numA;
+        });
+
         var html = '';
-        files.forEach(function(file) {
+        sortedFiles.forEach(function(file) {
             var rowClass = file.isLoading ? 'rlg-loading ' + partyClass : partyClass;
             var batesDisplay = file.isLoading ?
                 '<span class="rlg-detecting">Detecting... <span class="rlg-spinner-small"></span></span>' :
@@ -122,6 +136,19 @@
             indexState.files = [];
             RLG.updateIndexPreview();
         }
+    });
+
+    // Handle Bates column header clicker for sorting
+    $(document).on('click', '#index-sort-bates', function() {
+        // toggle sort order
+        indexState.sortOrder = indexState.sortOrder === 'asc' ? 'desc' : 'asc';
+
+        // update the sort icon
+        var icon = indexState.sortOrder === 'asc' ? '▲' : '▼';
+        $(this).find('.rlg-sort-icon').text(icon);
+
+        // Re-render the preview
+        RLG.updateIndexPreview();
     });
 
 })(jQuery);

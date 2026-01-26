@@ -2,7 +2,7 @@
 /**
  * Plugin Name: RLG Discovery Integration
  * Description: Integrates RLG Discovery Tools (Unlock, Organize, Bates, Redact) via shortcodes.
- * Version: 1.4.1
+ * Version: 1.4.2
  * Author: RLG
  */
 
@@ -22,7 +22,7 @@ require_once RLG_DISCOVERY_PATH . 'public/shortcodes.php';
 
 // Enqueue Scripts & Styles
 function rlg_discovery_enqueue_scripts() {
-    $version = '1.4.1';
+    $version = '1.4.2';
     $js_path = RLG_DISCOVERY_URL . 'public/js/';
 
     // CSS

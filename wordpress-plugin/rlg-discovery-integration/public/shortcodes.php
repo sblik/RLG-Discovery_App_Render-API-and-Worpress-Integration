@@ -108,7 +108,12 @@ function rlg_shortcode_bates($atts) {
                         </div>
                         <div class="rlg-form-group">
                             <label>Label Color</label>
-                            <input type="color" name="color_hex" id="bates-color" value="#0000FF">
+                            <div class="rlg-color-presets" id="bates-color-presets">
+                                <button type="button" class="rlg-color-swatch active" data-color="#0000FF" style="background-color:#0000FF" title="Blue"></button>
+                                <button type="button" class="rlg-color-swatch" data-color="#FF0000" style="background-color:#FF0000" title="Red"></button>
+                                <button type="button" class="rlg-color-swatch" data-color="#000000" style="background-color:#000000" title="Black"></button>
+                            </div>
+                            <input type="hidden" name="color_hex" id="bates-color" value="#0000FF">
                         </div>
                     </section>
                     <section class="rlg-divider">
@@ -325,7 +330,7 @@ function rlg_shortcode_index($atts) {
                                     <th>Date Produced</th>
                                     <th>Category</th>
                                     <th>Document Name</th>
-                                    <th>Bates Range</th>
+                                    <th class="rlg-sortable" id="index-sort-bates">Bates Range <span class="rlg-sort-icon">▲</span></th>
                                 </tr>
                             </thead>
                             <tbody></tbody>
