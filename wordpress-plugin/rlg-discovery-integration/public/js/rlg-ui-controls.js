@@ -73,4 +73,23 @@
         }
     });
 
+    $(document).on('click', '.rlg-color-swatch', function() {
+        var $this = $(this);
+        var $container = $this.closest('.rlg-color-presets');
+        var color = $this.data('color');
+
+        // update active state
+        $container.find('.rlg-color-swatch').removeClass('active');
+        $this.addClass('active');
+
+        // update hidden input value
+        var inputId = $container.attr('id').replace('-presets', '');
+        $('#' + inputId).val(color);
+
+        // Refresh bates labeler with new selected color
+        if (typeof RLG.updateBatesPreview() === 'function') {
+            RLG.updateBatesPreview()
+        };
+    });
+
 })(jQuery);

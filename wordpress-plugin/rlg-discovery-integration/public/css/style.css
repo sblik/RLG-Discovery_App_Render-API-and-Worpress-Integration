@@ -712,6 +712,21 @@ section.rlg-page-options {
     margin: 0;
 }
 
+.rlg-sortable {
+    cursor: pointer;
+    user-select: none;
+}
+
+.rlg-sortable:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.rlg-sort-icon {
+    margin-left: 4px;
+    font-size: 0.8em;
+    opacity: 0.7;
+}
+
 /* Canvas preview (Bates) */
 .rlg-preview-canvas-container {
     padding: 1rem;
@@ -831,6 +846,31 @@ section.rlg-page-options {
 
 .rlg-final-number strong {
     color: #047857;
+}
+
+/* Bates Color Preset Swatches */
+.rlg-color-presets {
+    display: flex;
+    gap: 8px;
+    margin-top: 4px;
+}
+
+.rlg-color-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: transform 0.15s, border-color 0.15s;
+}
+
+.rlg-color-swatch:hover {
+    transform: scale(1.1) !important;
+    border-width: unset;
+}
+
+.rlg-color-swatch.active {
+    border-color: #333;
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px #333;
 }
 
 /* Table preview (Index) */

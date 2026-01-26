@@ -25,7 +25,8 @@
 
     RLGDiscovery.indexPreviewState = {
         files: [],           // Array of {name, fullPath, category, batesRange, isLoading}
-        isProcessing: false
+        isProcessing: false,
+        sortOrder: 'asc'
     };
 
     // Store last Bates output for use in Index tool
