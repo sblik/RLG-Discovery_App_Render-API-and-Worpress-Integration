@@ -87,9 +87,9 @@
         $('#' + inputId).val(color);
 
         // Refresh bates labeler with new selected color
-        if (typeof RLG.updateBatesPreview() === 'function') {
-            RLG.updateBatesPreview()
-        };
+        if (typeof RLG.updateBatesPreview === 'function') {
+            RLG.updateBatesPreview();
+        }
     });
 
 })(jQuery);
