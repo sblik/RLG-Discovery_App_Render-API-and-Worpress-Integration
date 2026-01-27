@@ -22,6 +22,10 @@
 
         var formData = new FormData(this);
 
+        if (endpoint === '/bates') {
+            formData.set('font_bold', document.getElementById('bates-fontbold').checked ? 'true' : 'false');
+        }
+
         if (endpoint === '/index') {
             var source = $form.find('input[name="index_source"]:checked').val();
             if (source === 'last_bates') {

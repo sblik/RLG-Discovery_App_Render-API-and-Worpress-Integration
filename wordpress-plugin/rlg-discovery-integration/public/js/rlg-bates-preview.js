@@ -160,7 +160,13 @@
         var padding = zonePadding * scale;
 
         // Set font and measure text
-        ctx.font = 'bold ' + scaledFontSize + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+        var boldSelect = document.getElementById('bates-fontbold')
+
+        if (boldSelect.checked) {
+            ctx.font = 'bold ' + scaledFontSize + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+        } else {
+            ctx.font = scaledFontSize + 'px -apple-system, BlinkMacSystemFont, "Helvetica Neue", Arial, sans-serif';
+        }
         var textMetrics = ctx.measureText(label);
         var textWidth = textMetrics.width;
 
@@ -326,7 +332,7 @@
     });
 
     // Update preview when form values change
-    $(document).on('input change', '#bates-prefix, #bates-start, #bates-digits, #bates-color, #bates-fontsize, #bates-zone, #bates-padding', function() {
+    $(document).on('input change', '#bates-prefix, #bates-start, #bates-digits, #bates-color, #bates-fontsize, #bates-zone, #bates-padding, #bates-fontbold', function() {
         if (state.renderedImage) {
             RLG.updateBatesPreview();
         }

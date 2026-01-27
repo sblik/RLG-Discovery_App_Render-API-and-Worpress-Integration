@@ -107,6 +107,10 @@ function rlg_shortcode_bates($atts) {
                             <input type="number" name="font_size" id="bates-fontsize" value="12" min="6" max="36">
                         </div>
                         <div class="rlg-form-group">
+                            <label>Bold</label>
+                            <input type="checkbox" name="font_bold" id="bates-fontbold" >
+                        </div>
+                        <div class="rlg-form-group">
                             <label>Label Color</label>
                             <div class="rlg-color-presets" id="bates-color-presets">
                                 <button type="button" class="rlg-color-swatch active" data-color="#0000FF" style="background-color:#0000FF" title="Blue"></button>
