@@ -22,6 +22,8 @@ def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
     """
     Load a font from common system paths or fallback to default.
     """
+    is_bold = "Bold" in font_name or "bold" in font_name
+
     candidates = [
         font_name,
         # macOS
@@ -29,8 +31,10 @@ def load_font(font_name: str, size: int) -> ImageFont.FreeTypeFont:
         f"/System/Library/Fonts/{font_name}.ttf",
         # Linux (Debian/Ubuntu/Render)
         f"/usr/share/fonts/truetype/msttcorefonts/{font_name}.ttf",
-        f"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        f"/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
+        f"/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if is_bold
+            else f"/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        f"/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if is_bold
+            else f"/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
     ]
 
     for path in candidates:

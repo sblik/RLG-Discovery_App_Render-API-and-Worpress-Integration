@@ -144,7 +144,8 @@ async def bates_endpoint(
     color_hex: str = Form("#0000FF"),
     left_punch_margin: float = Form(0.0),
     border_all_pt: float = Form(0.0),
-    diagnostics: bool = Form(False)
+    diagnostics: bool = Form(False),
+    font_bold: bool = Form(False),
 ):
     """
     Apply Bates labels to PDFs and Images.
@@ -161,6 +162,9 @@ async def bates_endpoint(
             file_pairs.append((f.filename, content))
 
     color_rgb = logic._color_from_hex(color_hex)
+
+    if font_bold:
+        font_name = "Helvetica-Bold"
 
     try:
         records, last_used, labeled_pairs = logic.walk_and_label(
