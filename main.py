@@ -351,7 +351,6 @@ async def ocr_endpoint(
     optimize: int = Form(1),
     language: str = Form("eng"),
     rotate_pages: bool = Form(True),
-    remove_background: bool = Form(False),
     force_ocr: bool = Form(False),
     skip_text: bool = Form(False),
 ):
@@ -384,7 +383,6 @@ async def ocr_endpoint(
             optimize=optimize,
             language=language,
             rotate_pages=rotate_pages,
-            remove_background=remove_background,
             force_ocr=force_ocr,
             skip_text=skip_text,
         )

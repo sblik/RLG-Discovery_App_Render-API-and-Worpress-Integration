@@ -38,7 +38,6 @@ def ocr_pdf_bytes(
     optimize: int = 1,
     language: str = "eng",
     rotate_pages: bool = True,
-    remove_background: bool = False,
     force_ocr: bool = False,
     skip_text: bool = False,
 ) -> Tuple[bytes, OcrResult]:
@@ -51,7 +50,6 @@ def ocr_pdf_bytes(
         optimize: Optimization level (0-3)
         language: Tesseract language code(s)
         rotate_pages: Auto-rotate pages to correct orientation
-        remove_background: Remove background from scans
         force_ocr: OCR all pages regardless of existing text
         skip_text: Skip pages that already have a text layer
 
@@ -77,7 +75,6 @@ def ocr_pdf_bytes(
             optimize=optimize,
             language=language,
             rotate_pages=rotate_pages,
-            remove_background=remove_background,
             force_ocr=force_ocr,
             skip_text=skip_text,
             progress_bar=False,
@@ -118,7 +115,6 @@ def process_ocr_zip_bytes(
     optimize: int = 1,
     language: str = "eng",
     rotate_pages: bool = True,
-    remove_background: bool = False,
     force_ocr: bool = False,
     skip_text: bool = False,
 ) -> Tuple[bytes, List[OcrResult], Dict]:
@@ -131,7 +127,6 @@ def process_ocr_zip_bytes(
         optimize: Optimization level (0-3)
         language: Tesseract language code(s)
         rotate_pages: Auto-rotate pages to correct orientation
-        remove_background: Remove background from scans
         force_ocr: OCR all pages regardless of existing text
         skip_text: Skip pages that already have a text layer
 
@@ -161,7 +156,6 @@ def process_ocr_zip_bytes(
                     optimize=optimize,
                     language=language,
                     rotate_pages=rotate_pages,
-                    remove_background=remove_background,
                     force_ocr=force_ocr,
                     skip_text=skip_text,
                 )
@@ -191,7 +185,6 @@ def process_ocr_zip_bytes(
                 "optimize": optimize,
                 "language": language,
                 "rotate_pages": rotate_pages,
-                "remove_background": remove_background,
                 "force_ocr": force_ocr,
                 "skip_text": skip_text,
             },
