@@ -39,6 +39,25 @@ def home():
         ]
     }
 
+@app.get("/debug/tesseract")
+def debug_tesseract():
+    import subprocess, shutil, os
+    which = shutil.which("tesseract")
+    path = os.environ.get("PATH", "")
+    find_result = ""
+    try:
+        find_result = subprocess.check_output(
+            ["find", "/", "-name", "tesseract", "-type", "f"],
+            stderr=subprocess.DEVNULL, timeout=10
+        ).decode().strip()
+    except Exception as e:
+        find_result = str(e)
+    return {
+        "which": which,
+        "PATH": path,
+        "find": find_result,
+    }
+
 # -----------------------------------------------------------------------------
 # 1. UNLOCK
 # -----------------------------------------------------------------------------
