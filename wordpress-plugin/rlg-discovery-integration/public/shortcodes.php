@@ -382,9 +382,6 @@ function rlg_shortcode_ocr($atts) {
                 <div class="rlg-form-group rlg-checkbox-toggle">
                     <label><input type="checkbox" name="rotate_pages" checked> Auto-rotate pages</label>
                 </div>
-                <div class="rlg-form-group rlg-checkbox-toggle">
-                    <label><input type="checkbox" name="remove_background"> Remove background</label>
-                </div>
             </section>
             <section class="rlg-section-flex rlg-divider">
                 <h4>Processing Options</h4>
