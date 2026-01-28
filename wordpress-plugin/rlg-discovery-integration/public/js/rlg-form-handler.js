@@ -26,6 +26,14 @@
             formData.set('font_bold', document.getElementById('bates-fontbold').checked ? 'true' : 'false');
         }
 
+        if (endpoint === '/ocr') {
+            var ocrCheckboxes = ['deskew', 'rotate_pages', 'force_ocr', 'skip_text'];
+            ocrCheckboxes.forEach(function(name) {
+                var cb = $form.find('input[name="' + name + '"]')[0];
+                formData.set(name, cb && cb.checked ? 'true' : 'false');
+            });
+        }
+
         if (endpoint === '/index') {
             var source = $form.find('input[name="index_source"]:checked').val();
             if (source === 'last_bates') {

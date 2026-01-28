@@ -2,9 +2,13 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional
 import io
+import logging
 import zipfile
 import json
 from datetime import datetime
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import business logic
 import logic
@@ -395,6 +399,9 @@ async def ocr_endpoint(
             zf.writestr(fname, data)
     input_zip = buf.getvalue()
 
+    logger.info("OCR request: %d file(s), language=%s, deskew=%s, force_ocr=%s",
+                len(file_pairs), language, deskew, force_ocr)
+
     try:
         out_zip, results, summary = logic.process_ocr_zip_bytes(
             input_zip,
@@ -406,6 +413,8 @@ async def ocr_endpoint(
             skip_text=skip_text,
         )
 
+        logger.info("OCR complete: %s", summary)
+
         return StreamingResponse(
             io.BytesIO(out_zip),
             media_type="application/zip",
@@ -416,4 +425,5 @@ async def ocr_endpoint(
             }
         )
     except Exception as e:
+        logger.exception("OCR endpoint error")
         raise HTTPException(status_code=500, detail=str(e))
