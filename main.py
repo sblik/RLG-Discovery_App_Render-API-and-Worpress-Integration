@@ -34,7 +34,8 @@ def home():
             "/organize",
             "/bates",
             "/index",
-            "/redact"
+            "/redact",
+            "/ocr"
         ]
     }
 
@@ -335,6 +336,66 @@ async def redact_endpoint(
             headers={
                 "Content-Disposition": "attachment; filename=redacted_output.zip",
                 "X-Total-Hits": str(summary["total_hits"])
+            }
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# -----------------------------------------------------------------------------
+# 6. OCR (Make Searchable)
+# -----------------------------------------------------------------------------
+@app.post("/ocr")
+async def ocr_endpoint(
+    files: List[UploadFile] = File(...),
+    deskew: bool = Form(False),
+    optimize: int = Form(1),
+    language: str = Form("eng"),
+    rotate_pages: bool = Form(True),
+    remove_background: bool = Form(False),
+    force_ocr: bool = Form(False),
+    skip_text: bool = Form(False),
+):
+    """
+    Perform OCR on scanned PDFs to make them searchable.
+    """
+    # Collect files (handle ZIP extraction)
+    file_pairs = []
+    for f in files:
+        content = await f.read()
+        if f.filename.lower().endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                for info in zf.infolist():
+                    if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
+                        file_pairs.append((info.filename, zf.read(info)))
+        else:
+            file_pairs.append((f.filename, content))
+
+    # Wrap in ZIP for uniform processing
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, data in file_pairs:
+            zf.writestr(fname, data)
+    input_zip = buf.getvalue()
+
+    try:
+        out_zip, results, summary = logic.process_ocr_zip_bytes(
+            input_zip,
+            deskew=deskew,
+            optimize=optimize,
+            language=language,
+            rotate_pages=rotate_pages,
+            remove_background=remove_background,
+            force_ocr=force_ocr,
+            skip_text=skip_text,
+        )
+
+        return StreamingResponse(
+            io.BytesIO(out_zip),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=ocr_output.zip",
+                "X-OCR-Success-Count": str(summary["success_count"]),
+                "X-OCR-Skipped-Count": str(summary["skipped_count"]),
             }
         )
     except Exception as e:
