@@ -87,13 +87,18 @@ def ocr_pdf_bytes(
             force_ocr=force_ocr,
             skip_text=skip_text,
             progress_bar=False,
-            jobs=4,
+            jobs=2,
         )
 
-        with open(out_path, "rb") as f:
-            output_bytes = f.read()
-        result.status = "success"
-        result.message = "OCR completed successfully"
+        if exit_code != ocrmypdf.ExitCode.ok:
+            output_bytes = pdf_bytes
+            result.status = "error"
+            result.message = f"ocrmypdf exited with code {exit_code.name} ({exit_code.value})"
+        else:
+            with open(out_path, "rb") as f:
+                output_bytes = f.read()
+            result.status = "success"
+            result.message = "OCR completed successfully"
 
     except ocrmypdf.exceptions.PriorOcrFoundError:
         output_bytes = pdf_bytes
