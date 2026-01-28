@@ -180,6 +180,10 @@ def process_ocr_zip_bytes(
             "files_processed": len([r for r in results if r.status == "success"]),
             "files_skipped": len([r for r in results if r.status == "skipped"]),
             "files_errored": len([r for r in results if r.status == "error"]),
+            "details": [
+                {"file": r.rel_path, "status": r.status, "message": r.message}
+                for r in results
+            ],
             "settings": {
                 "deskew": deskew,
                 "optimize": optimize,
