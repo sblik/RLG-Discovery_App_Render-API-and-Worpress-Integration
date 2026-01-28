@@ -124,6 +124,16 @@ from .redaction import (
 )
 
 # ------------------------
+# OCR processor module exports
+# ------------------------
+from .ocr_processor import (
+    OCRMYPDF_AVAILABLE,
+    OcrResult,
+    ocr_pdf_bytes,
+    process_ocr_zip_bytes,
+)
+
+# ------------------------
 # Module version
 # ------------------------
 __version__ = "2.0.0"
@@ -192,4 +202,9 @@ __all__ = [
     "prefix_excluding_last_n_digits",
     "redact_pdf_bytes",
     "process_zip_bytes",
+    # OCR processor
+    "OCRMYPDF_AVAILABLE",
+    "OcrResult",
+    "ocr_pdf_bytes",
+    "process_ocr_zip_bytes",
 ]

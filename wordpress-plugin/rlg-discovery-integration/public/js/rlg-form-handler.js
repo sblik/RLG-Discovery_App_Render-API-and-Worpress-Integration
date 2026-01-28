@@ -130,6 +130,7 @@
                 if (endpoint === '/bates') filename = 'bates_labeled.zip';
                 if (endpoint === '/redact') filename = 'redacted_output.zip';
                 if (endpoint === '/index') filename = 'discovery_index.xlsx';
+                if (endpoint === '/ocr') filename = 'ocr_output.zip';
 
                 a.download = filename;
                 document.body.appendChild(a);

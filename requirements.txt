@@ -12,3 +12,4 @@ pytesseract
 fastapi
 uvicorn
 python-multipart
+ocrmypdf
