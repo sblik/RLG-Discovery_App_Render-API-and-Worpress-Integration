@@ -6,6 +6,8 @@ Contains: Functions to perform OCR on scanned PDFs and create searchable PDF/A d
 from __future__ import annotations
 
 import io
+import os
+import shutil
 import tempfile
 import zipfile
 import json
@@ -14,6 +16,13 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 from .utils import _is_mac_resource_junk
+
+# Ensure tesseract is findable on PATH (Render may install to /usr/bin or /usr/local/bin)
+if not shutil.which("tesseract"):
+    for _candidate in ["/usr/bin", "/usr/local/bin", "/opt/render/project/.apt/usr/bin"]:
+        if os.path.isfile(os.path.join(_candidate, "tesseract")):
+            os.environ["PATH"] = _candidate + os.pathsep + os.environ.get("PATH", "")
+            break
 
 try:
     import ocrmypdf
