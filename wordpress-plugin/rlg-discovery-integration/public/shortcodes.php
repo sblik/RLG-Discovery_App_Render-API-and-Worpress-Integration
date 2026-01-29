@@ -361,45 +361,6 @@ function rlg_shortcode_ocr($atts) {
                 <label>Upload PDFs or ZIP</label>
                 <input type="file" name="files" multiple required accept=".pdf,.zip">
             </div>
-            <section class="rlg-section-flex rlg-divider">
-                <h4>Language</h4>
-                <div class="rlg-form-group">
-                    <label>OCR Language</label>
-                    <select name="language">
-                        <option value="eng" selected>English</option>
-                        <option value="spa">Spanish</option>
-                        <option value="fra">French</option>
-                        <option value="deu">German</option>
-                        <option value="eng+spa">English + Spanish</option>
-                    </select>
-                </div>
-            </section>
-            <section class="rlg-section-flex rlg-divider">
-                <h4>Image Corrections</h4>
-                <div class="rlg-form-group rlg-checkbox-toggle">
-                    <label><input type="checkbox" name="deskew"> Deskew (straighten tilted scans)</label>
-                </div>
-                <div class="rlg-form-group rlg-checkbox-toggle">
-                    <label><input type="checkbox" name="rotate_pages" checked> Auto-rotate pages</label>
-                </div>
-            </section>
-            <section class="rlg-section-flex rlg-divider">
-                <h4>Processing Options</h4>
-                <div class="rlg-form-group">
-                    <label>Optimization Level</label>
-                    <select name="optimize">
-                        <option value="0">None (fastest)</option>
-                        <option value="1" selected>Lossless (recommended)</option>
-                        <option value="2">Lossy (smaller files)</option>
-                    </select>
-                </div>
-                <div class="rlg-form-group rlg-checkbox-toggle">
-                    <label><input type="checkbox" name="force_ocr"> Force OCR (even if text exists)</label>
-                </div>
-                <div class="rlg-form-group rlg-checkbox-toggle">
-                    <label><input type="checkbox" name="skip_text"> Skip pages with existing text</label>
-                </div>
-            </section>
             <button type="submit" class="rlg-btn rlg-single-column-btn">Make Searchable</button>
             <div class="rlg-status"></div>
         </form>
