@@ -43,25 +43,6 @@ def home():
         ]
     }
 
-@app.get("/debug/tesseract")
-def debug_tesseract():
-    import subprocess, shutil, os
-    which = shutil.which("tesseract")
-    path = os.environ.get("PATH", "")
-    find_result = ""
-    try:
-        find_result = subprocess.check_output(
-            ["find", "/", "-name", "tesseract", "-type", "f"],
-            stderr=subprocess.DEVNULL, timeout=10
-        ).decode().strip()
-    except Exception as e:
-        find_result = str(e)
-    return {
-        "which": which,
-        "PATH": path,
-        "find": find_result,
-    }
-
 # -----------------------------------------------------------------------------
 # 1. UNLOCK
 # -----------------------------------------------------------------------------
@@ -370,12 +351,6 @@ async def redact_endpoint(
 @app.post("/ocr")
 async def ocr_endpoint(
     files: List[UploadFile] = File(...),
-    deskew: bool = Form(False),
-    optimize: int = Form(1),
-    language: str = Form("eng"),
-    rotate_pages: bool = Form(True),
-    force_ocr: bool = Form(False),
-    skip_text: bool = Form(False),
 ):
     """
     Perform OCR on scanned PDFs to make them searchable.
@@ -399,29 +374,16 @@ async def ocr_endpoint(
             zf.writestr(fname, data)
     input_zip = buf.getvalue()
 
-    logger.info("OCR request: %d file(s), language=%s, deskew=%s, force_ocr=%s",
-                len(file_pairs), language, deskew, force_ocr)
+    logger.info("OCR request: %d file(s)", len(file_pairs))
 
     try:
-        out_zip, results, summary = logic.process_ocr_zip_bytes(
-            input_zip,
-            deskew=deskew,
-            optimize=optimize,
-            language=language,
-            rotate_pages=rotate_pages,
-            force_ocr=force_ocr,
-            skip_text=skip_text,
-        )
-
-        logger.info("OCR complete: %s", summary)
+        out_zip = logic.process_ocr_zip_bytes(input_zip)
 
         return StreamingResponse(
             io.BytesIO(out_zip),
             media_type="application/zip",
             headers={
                 "Content-Disposition": "attachment; filename=ocr_output.zip",
-                "X-OCR-Success-Count": str(summary["success_count"]),
-                "X-OCR-Skipped-Count": str(summary["skipped_count"]),
             }
         )
     except Exception as e:

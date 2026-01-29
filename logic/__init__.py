@@ -128,7 +128,6 @@ from .redaction import (
 # ------------------------
 from .ocr_processor import (
     OCRMYPDF_AVAILABLE,
-    OcrResult,
     ocr_pdf_bytes,
     process_ocr_zip_bytes,
 )
@@ -204,7 +203,6 @@ __all__ = [
     "process_zip_bytes",
     # OCR processor
     "OCRMYPDF_AVAILABLE",
-    "OcrResult",
     "ocr_pdf_bytes",
     "process_ocr_zip_bytes",
 ]
