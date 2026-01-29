@@ -2,9 +2,13 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional
 import io
+import logging
 import zipfile
 import json
 from datetime import datetime
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Import business logic
 import logic
@@ -34,7 +38,8 @@ def home():
             "/organize",
             "/bates",
             "/index",
-            "/redact"
+            "/redact",
+            "/ocr"
         ]
     }
 
@@ -338,4 +343,49 @@ async def redact_endpoint(
             }
         )
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+# -----------------------------------------------------------------------------
+# 6. OCR (Make Searchable)
+# -----------------------------------------------------------------------------
+@app.post("/ocr")
+async def ocr_endpoint(
+    files: List[UploadFile] = File(...),
+):
+    """
+    Perform OCR on scanned PDFs to make them searchable.
+    """
+    # Collect files (handle ZIP extraction)
+    file_pairs = []
+    for f in files:
+        content = await f.read()
+        if f.filename.lower().endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                for info in zf.infolist():
+                    if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
+                        file_pairs.append((info.filename, zf.read(info)))
+        else:
+            file_pairs.append((f.filename, content))
+
+    # Wrap in ZIP for uniform processing
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for fname, data in file_pairs:
+            zf.writestr(fname, data)
+    input_zip = buf.getvalue()
+
+    logger.info("OCR request: %d file(s)", len(file_pairs))
+
+    try:
+        out_zip = logic.process_ocr_zip_bytes(input_zip)
+
+        return StreamingResponse(
+            io.BytesIO(out_zip),
+            media_type="application/zip",
+            headers={
+                "Content-Disposition": "attachment; filename=ocr_output.zip",
+            }
+        )
+    except Exception as e:
+        logger.exception("OCR endpoint error")
         raise HTTPException(status_code=500, detail=str(e))

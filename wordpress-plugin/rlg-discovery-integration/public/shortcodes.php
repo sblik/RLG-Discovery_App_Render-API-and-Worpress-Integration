@@ -350,6 +350,26 @@ function rlg_shortcode_index($atts) {
 }
 add_shortcode('rlg_index', 'rlg_shortcode_index');
 
+function rlg_shortcode_ocr($atts) {
+    ob_start();
+    ?>
+    <div class="rlg-discovery-tool" id="rlg-ocr-tool">
+        <h3>Make Searchable (OCR)</h3>
+        <p>Convert scanned PDFs into searchable documents. Run this before redaction for best results.</p>
+        <form class="rlg-discovery-form rlg-sectioned-form" data-endpoint="/ocr" data-response-type="blob">
+            <div class="rlg-form-group rlg-divider">
+                <label>Upload PDFs or ZIP</label>
+                <input type="file" name="files" multiple required accept=".pdf,.zip">
+            </div>
+            <button type="submit" class="rlg-btn rlg-single-column-btn">Make Searchable</button>
+            <div class="rlg-status"></div>
+        </form>
+    </div>
+    <?php
+    return ob_get_clean();
+}
+add_shortcode('rlg_ocr', 'rlg_shortcode_ocr');
+
 function rlg_shortcode_discovery_tools($atts) {
     ob_start();
     ?>
@@ -358,6 +378,7 @@ function rlg_shortcode_discovery_tools($atts) {
             <button class="rlg-tab active" data-tab="bates">Bates</button>
             <button class="rlg-tab" data-tab="index">Index</button>
             <button class="rlg-tab" data-tab="organize">Organize</button>
+            <button class="rlg-tab" data-tab="ocr">OCR</button>
             <button class="rlg-tab" data-tab="redact">Redact</button>
             <button class="rlg-tab" data-tab="unlock">Unlock</button>
         </div>
@@ -370,6 +391,9 @@ function rlg_shortcode_discovery_tools($atts) {
             </div>
             <div class="rlg-tab-pane" id="rlg-pane-organize">
                 <?php echo rlg_shortcode_organize(array()); ?>
+            </div>
+            <div class="rlg-tab-pane" id="rlg-pane-ocr">
+                <?php echo rlg_shortcode_ocr(array()); ?>
             </div>
             <div class="rlg-tab-pane" id="rlg-pane-redact">
                 <?php echo rlg_shortcode_redact(array()); ?>
