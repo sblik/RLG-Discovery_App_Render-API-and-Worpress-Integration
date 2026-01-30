@@ -1560,6 +1560,7 @@ def image_bytes_to_pdf(img_bytes: bytes) -> bytes:
         return buf.getvalue()
 
 PAD_VALUE = 3.0
+PAD_VALUE_V = 0.5
 
 def _black_fill():
     try:
@@ -1569,15 +1570,17 @@ def _black_fill():
         return (0, 0, 0)
 
 def add_black_redaction(page: "fitz.Page", rect: "fitz.Rect", pad: Optional[float] = None) -> None:
-    p = float(PAD_VALUE if pad is None else pad)
+    ph = float(PAD_VALUE if pad is None else pad)
+    pv = float(PAD_VALUE_V)
     r = fitz.Rect(rect)
-    r = fitz.Rect(r.x0 - p, r.y0 - p, r.x1 + p, r.y1 + p)
+    r = fitz.Rect(r.x0 - ph, r.y0 - pv, r.x1 + ph, r.y1 + pv)
     page.add_redact_annot(r, fill=_black_fill())
 
 def add_black_redaction_leftmask(page: "fitz.Page", rect: "fitz.Rect", pad: Optional[float] = None) -> None:
-    p = float(PAD_VALUE if pad is None else pad)
+    ph = float(PAD_VALUE if pad is None else pad)
+    pv = float(PAD_VALUE_V)
     r = fitz.Rect(rect)
-    r = fitz.Rect(r.x0 - p, r.y0 - p, r.x1, r.y1 + p)
+    r = fitz.Rect(r.x0 - ph, r.y0 - pv, r.x1, r.y1 + pv)
     page.add_redact_annot(r, fill=_black_fill())
 
 def prefix_excluding_last_n_digits(s: str, n: int) -> str:
