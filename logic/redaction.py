@@ -143,8 +143,8 @@ def image_bytes_to_pdf(img_bytes: bytes) -> bytes:
         return buf.getvalue()
 
 
-PAD_VALUE = 3.0
-PAD_VALUE_V = 0.5
+PAD_VALUE = 2.0
+PAD_VALUE_V = -3.0
 
 
 def _black_fill():
