@@ -455,20 +455,21 @@ def process_zip_bytes(
     with zipfile.ZipFile(out_buf, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
         for arcname, data in redacted_files:
             zout.writestr(arcname, data)
-        csv_s = io.StringIO()
-        cw = csv.writer(csv_s)
-        cw.writerow(["file", "page", "pattern", "match"])
-        for h in audit_hits:
-            cw.writerow([h.rel_path, h.page_num, h.pattern, h.matched_text])
-        zout.writestr("audit.csv", csv_s.getvalue().encode("utf-8"))
-        report = {
-            "files_processed": len(redacted_files),
-            "total_hits": len(audit_hits),
-            "patterns": [p.pattern for p in patterns],
-            "keep_last_digits": keep_last_digits,
-            "require_ssn_context": require_ssn_context,
-        }
-        zout.writestr("report.json", json.dumps(report, indent=2).encode("utf-8"))
+#         ======== This code that is commented out is for an audit.csv file and a report.json file that were used for testing ========
+#         csv_s = io.StringIO()
+#         cw = csv.writer(csv_s)
+#         cw.writerow(["file", "page", "pattern", "match"])
+#         for h in audit_hits:
+#             cw.writerow([h.rel_path, h.page_num, h.pattern, h.matched_text])
+#         zout.writestr("audit.csv", csv_s.getvalue().encode("utf-8"))
+#         report = {
+#             "files_processed": len(redacted_files),
+#             "total_hits": len(audit_hits),
+#             "patterns": [p.pattern for p in patterns],
+#             "keep_last_digits": keep_last_digits,
+#             "require_ssn_context": require_ssn_context,
+#         }
+#         zout.writestr("report.json", json.dumps(report, indent=2).encode("utf-8"))
 
     return out_buf.getvalue(), audit_hits, {
         "files_processed": len(redacted_files),

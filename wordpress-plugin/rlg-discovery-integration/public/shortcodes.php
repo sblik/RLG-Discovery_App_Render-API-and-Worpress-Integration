@@ -221,7 +221,7 @@ function rlg_shortcode_redact($atts) {
                 <h4>Custom Patterns</h4>
                 <div class="rlg-form-group">
                     <label>Literal Patterns (comma separated)</label>
-                    <input type="text" name="literal_patterns" placeholder="e.g., CONFIDENTIAL, SECRET">
+                    <input type="text" name="literal_patterns" placeholder="e.g., 000001, 000AB2">
                 </div>
                 <div class="rlg-form-group rlg-checkbox-toggle">
                     <label>
