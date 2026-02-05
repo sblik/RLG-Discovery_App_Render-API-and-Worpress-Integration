@@ -27,7 +27,17 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
+    expose_headers=["Content-Disposition", "X-Last-Bates-Number", "X-Total-Hits"],
 )
+
+def _maybe_unwrap_single_pdf(zip_bytes: bytes):
+    """If ZIP contains one pdf, return (pdf_bytes, filename). Otherwise None."""
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        entries = [i for i in zf.infolist() if not i.is_dir()]
+        if len(entries) == 1 and entries[0].filename.lower().endswith('.pdf'):
+            name = entries[0].filename.split('/')[-1]
+            return zf.read(entries[0]), name
+    return None
 
 @app.get("/")
 def home():
@@ -87,6 +97,18 @@ async def unlock_pdfs_endpoint(
 
     try:
         result_zip = logic.unlock_pdfs(file_pairs, password_mode, password_for_all, password_map)
+
+        single = _maybe_unwrap_single_pdf(result_zip)
+        if single:
+            pdf_bytes, pdf_name = single
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{pdf_name}"'
+                }
+            )
+
         return StreamingResponse(
             io.BytesIO(result_zip),
             media_type="application/zip",
@@ -199,6 +221,18 @@ async def bates_endpoint(
         # We'll include the records as a CSV inside the ZIP? 
         # Or just return the ZIP for now as per "Swiss Army Knife" flow.
         
+        single = _maybe_unwrap_single_pdf(zip_bytes)
+        if single:
+            pdf_bytes, pdf_name = single
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{pdf_name}"',
+                    "X-Last-Bates-Number": str(last_used)
+                }
+            )
+
         return StreamingResponse(
             io.BytesIO(zip_bytes),
             media_type="application/zip",
@@ -222,26 +256,30 @@ async def index_endpoint(
     """
     Generate Discovery Index Excel from a ZIP of labeled files.
     """
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Input must be a ZIP file.")
-
     content = await file.read()
     pairs = []
     rows = []
     
     try:
-        with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
-            for info in zf.infolist():
-                if info.is_dir() or logic._is_mac_resource_junk(info.filename):
-                    continue
-                data = zf.read(info)
-                pairs.append((info.filename, data))
-                
-                # Basic metadata
-                p = logic.Path(info.filename)
-                rel_dir = str(p.parent) if str(p.parent) != "." else ""
-                cat = p.parts[-2] if len(p.parts) > 1 else ""
-                rows.append({"rel_dir": rel_dir, "filename": p.name, "category": cat})
+        if file.filename.lower().endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+                for info in zf.infolist():
+                    if info.is_dir() or logic._is_mac_resource_junk(info.filename):
+                        continue
+                    data = zf.read(info)
+                    pairs.append((info.filename, data))
+
+                    # Basic metadata
+                    p = logic.Path(info.filename)
+                    rel_dir = str(p.parent) if str(p.parent) != "." else ""
+                    cat = p.parts[-2] if len(p.parts) > 1 else ""
+                    rows.append({"rel_dir": rel_dir, "filename": p.name, "category": cat})
+        elif file.filename.lower().endswith(".pdf"):
+            pairs.append((file.filename, content))
+            p = logic.Path(file.filename)
+            rows.append({"rel_dir": "", "filename": p.name, "category": ""})
+        else:
+            raise HTTPException(status_code=400, detail="Please select a PDF or ZIP file.")
         
         df = logic.pd.DataFrame(rows)
         
@@ -333,6 +371,18 @@ async def redact_endpoint(
             keep_last_digits,
             require_ssn_context=require_ssn_context
         )
+
+        single = _maybe_unwrap_single_pdf(out_zip)
+        if single:
+            pdf_bytes, pdf_name = single
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{pdf_name}"',
+                    "X-Total-Hits": str(summary["total_hits"])
+                }
+            )
         
         return StreamingResponse(
             io.BytesIO(out_zip),
@@ -378,6 +428,17 @@ async def ocr_endpoint(
 
     try:
         out_zip = logic.process_ocr_zip_bytes(input_zip)
+
+        single = _maybe_unwrap_single_pdf(out_zip)
+        if single:
+            pdf_bytes, pdf_name = single
+            return StreamingResponse(
+                io.BytesIO(pdf_bytes),
+                media_type="application/pdf",
+                headers={
+                    "Content-Disposition": f'attachment; filename="{pdf_name}"',
+                }
+            )
 
         return StreamingResponse(
             io.BytesIO(out_zip),
