@@ -137,13 +137,14 @@
 
                 var filename = serverFilename;
                 if (!filename) {
-                    filename = 'download.zip';
-                    if (endpoint === '/unlock') filename = 'unlocked_pdfs.zip';
-                    if (endpoint === '/organize') filename = 'organized_by_year.zip';
-                    if (endpoint === '/bates') filename = 'bates_labeled.zip';
-                    if (endpoint === '/redact') filename = 'redacted_output.zip';
-                    if (endpoint === '/index') filename = 'discovery_index.xlsx';
-                    if (endpoint === '/ocr') filename = 'ocr_output.zip';
+                    var isPdf = result.contentType.indexOf('application/pdf') !== -1;
+                    if (endpoint === '/unlock') filename = isPdf ? 'unlocked.pdf' : 'unlocked_pdfs.zip';
+                    else if (endpoint === '/organize') filename = 'organized_by_year.zip';
+                    else if (endpoint === '/bates') filename = isPdf ? 'bates_labeled.pdf' : 'bates_labeled.zip';
+                    else if (endpoint === '/redact') filename = isPdf ? 'redacted_output.pdf' : 'redacted_output.zip';
+                    else if (endpoint === '/index') filename = 'discovery_index.xlsx';
+                    else if (endpoint === '/ocr') filename = isPdf ? 'ocr_output.pdf' : 'ocr_output.zip';
+                    else filename = 'download.zip';
                 }
                 a.download = filename;
                 document.body.appendChild(a);
