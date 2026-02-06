@@ -10,6 +10,10 @@ RUN apt-get update && \
     ghostscript && \
     rm -rf /var/lib/apt/lists/*
 
+# Ensure tesseract is discoverable by ocrmypdf
+ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
+ENV TESSDATA_PREFIX="/usr/share/tesseract-ocr/5/tessdata"
+
 WORKDIR /app
 
 COPY requirements.txt .

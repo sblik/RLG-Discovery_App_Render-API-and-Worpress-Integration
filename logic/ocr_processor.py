@@ -14,12 +14,16 @@ from pathlib import Path
 
 from .utils import _is_mac_resource_junk
 
-# Ensure tesseract is findable on PATH (Render may install to /usr/bin or /usr/local/bin)
-if not shutil.which("tesseract"):
+# Ensure tesseract is findable on PATH (Docker/Render may install to various locations)
+def _ensure_tesseract_on_path():
+    if shutil.which("tesseract"):
+        return
     for _candidate in ["/usr/bin", "/usr/local/bin", "/opt/render/project/.apt/usr/bin"]:
         if os.path.isfile(os.path.join(_candidate, "tesseract")):
             os.environ["PATH"] = _candidate + os.pathsep + os.environ.get("PATH", "")
-            break
+            return
+
+_ensure_tesseract_on_path()
 
 try:
     import ocrmypdf
@@ -39,6 +43,8 @@ def ocr_pdf_bytes(pdf_bytes: bytes) -> bytes:
     """
     if not OCRMYPDF_AVAILABLE:
         raise RuntimeError("ocrmypdf is not installed. Install with: pip install ocrmypdf")
+
+    _ensure_tesseract_on_path()
 
     with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as in_tmp:
         in_tmp.write(pdf_bytes)
