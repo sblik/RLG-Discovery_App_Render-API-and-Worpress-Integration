@@ -48,8 +48,8 @@ def ocr_pdf_bytes(pdf_bytes: bytes) -> bytes:
 
     try:
         ocrmypdf.ocr(
-            input_file=str(in_path),
-            output_file=str(out_path),
+            str(in_path),
+            str(out_path),
             deskew=True,
             force_ocr=True,
             progress_bar=False,

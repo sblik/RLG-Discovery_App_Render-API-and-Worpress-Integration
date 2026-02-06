@@ -137,10 +137,13 @@
 
                 var filename = serverFilename;
                 if (!filename) {
-                    var isPdf = result.contentType.indexOf('application/pdf') !== -1;
+                    var ct = result.contentType;
+                    var isPdf = ct.indexOf('application/pdf') !== -1;
+                    var isImage = ct.indexOf('image/png') !== -1 || ct.indexOf('image/jpeg') !== -1;
+                    var ext = isPdf ? '.pdf' : isImage ? (ct.indexOf('png') !== -1 ? '.png' : '.jpg') : '.zip';
                     if (endpoint === '/unlock') filename = isPdf ? 'unlocked.pdf' : 'unlocked_pdfs.zip';
                     else if (endpoint === '/organize') filename = 'organized_by_year.zip';
-                    else if (endpoint === '/bates') filename = isPdf ? 'bates_labeled.pdf' : 'bates_labeled.zip';
+                    else if (endpoint === '/bates') filename = ext !== '.zip' ? 'bates_labeled' + ext : 'bates_labeled.zip';
                     else if (endpoint === '/redact') filename = isPdf ? 'redacted_output.pdf' : 'redacted_output.zip';
                     else if (endpoint === '/index') filename = 'discovery_index.xlsx';
                     else if (endpoint === '/ocr') filename = isPdf ? 'ocr_output.pdf' : 'ocr_output.zip';

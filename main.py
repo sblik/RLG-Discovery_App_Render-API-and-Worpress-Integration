@@ -30,13 +30,23 @@ app.add_middleware(
     expose_headers=["Content-Disposition", "X-Last-Bates-Number", "X-Total-Hits"],
 )
 
-def _maybe_unwrap_single_pdf(zip_bytes: bytes):
-    """If ZIP contains one pdf, return (pdf_bytes, filename). Otherwise None."""
+_SINGLE_FILE_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
+def _maybe_unwrap_single_file(zip_bytes: bytes):
+    """If ZIP contains one supported file, return (bytes, filename, media_type). Otherwise None."""
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
         entries = [i for i in zf.infolist() if not i.is_dir()]
-        if len(entries) == 1 and entries[0].filename.lower().endswith('.pdf'):
-            name = entries[0].filename.split('/')[-1]
-            return zf.read(entries[0]), name
+        if len(entries) == 1:
+            ext = entries[0].filename.rsplit(".", 1)[-1].lower() if "." in entries[0].filename else ""
+            media_type = _SINGLE_FILE_TYPES.get(f".{ext}")
+            if media_type:
+                name = entries[0].filename.split('/')[-1]
+                return zf.read(entries[0]), name, media_type
     return None
 
 @app.get("/")
@@ -98,14 +108,14 @@ async def unlock_pdfs_endpoint(
     try:
         result_zip = logic.unlock_pdfs(file_pairs, password_mode, password_for_all, password_map)
 
-        single = _maybe_unwrap_single_pdf(result_zip)
+        single = _maybe_unwrap_single_file(result_zip)
         if single:
-            pdf_bytes, pdf_name = single
+            file_bytes, file_name, media = single
             return StreamingResponse(
-                io.BytesIO(pdf_bytes),
-                media_type="application/pdf",
+                io.BytesIO(file_bytes),
+                media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{pdf_name}"'
+                    "Content-Disposition": f'attachment; filename="{file_name}"'
                 }
             )
 
@@ -221,14 +231,14 @@ async def bates_endpoint(
         # We'll include the records as a CSV inside the ZIP? 
         # Or just return the ZIP for now as per "Swiss Army Knife" flow.
         
-        single = _maybe_unwrap_single_pdf(zip_bytes)
+        single = _maybe_unwrap_single_file(zip_bytes)
         if single:
-            pdf_bytes, pdf_name = single
+            file_bytes, file_name, media = single
             return StreamingResponse(
-                io.BytesIO(pdf_bytes),
-                media_type="application/pdf",
+                io.BytesIO(file_bytes),
+                media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{pdf_name}"',
+                    "Content-Disposition": f'attachment; filename="{file_name}"',
                     "X-Last-Bates-Number": str(last_used)
                 }
             )
@@ -372,18 +382,18 @@ async def redact_endpoint(
             require_ssn_context=require_ssn_context
         )
 
-        single = _maybe_unwrap_single_pdf(out_zip)
+        single = _maybe_unwrap_single_file(out_zip)
         if single:
-            pdf_bytes, pdf_name = single
+            file_bytes, file_name, media = single
             return StreamingResponse(
-                io.BytesIO(pdf_bytes),
-                media_type="application/pdf",
+                io.BytesIO(file_bytes),
+                media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{pdf_name}"',
+                    "Content-Disposition": f'attachment; filename="{file_name}"',
                     "X-Total-Hits": str(summary["total_hits"])
                 }
             )
-        
+
         return StreamingResponse(
             io.BytesIO(out_zip),
             media_type="application/zip",
@@ -429,14 +439,14 @@ async def ocr_endpoint(
     try:
         out_zip = logic.process_ocr_zip_bytes(input_zip)
 
-        single = _maybe_unwrap_single_pdf(out_zip)
+        single = _maybe_unwrap_single_file(out_zip)
         if single:
-            pdf_bytes, pdf_name = single
+            file_bytes, file_name, media = single
             return StreamingResponse(
-                io.BytesIO(pdf_bytes),
-                media_type="application/pdf",
+                io.BytesIO(file_bytes),
+                media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{pdf_name}"',
+                    "Content-Disposition": f'attachment; filename="{file_name}"',
                 }
             )
 
