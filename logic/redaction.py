@@ -32,11 +32,8 @@ except Exception:
     pikepdf = None
     PIKEPDF_AVAILABLE = False
 
-# Optional: OCR
-try:
-    import pytesseract
-except Exception:
-    pytesseract = None
+# Optional: OnnxTR OCR engine
+from .ocr_engine import OCR_AVAILABLE, pdf_page_to_numpy, ocr_pages_words
 
 # ------------------------
 # Constants and patterns
@@ -269,12 +266,26 @@ def redact_pdf_bytes(
         page_text = page.get_text("text") or ""
         page_had_text = bool(page_text.strip())
 
-        if not page_had_text and pytesseract is not None:
+        if not page_had_text and OCR_AVAILABLE:
             try:
-                pix = page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                ocr = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-                words = ocr.get("text", [])
+                page_img = pdf_page_to_numpy(page, dpi=300)
+                ocr_words_list = ocr_pages_words([page_img])[0]
+
+                # Build parallel arrays matching the old pytesseract dict layout
+                pw = page.rect.width
+                ph = page.rect.height
+                words = []
+                ocr = {"left": [], "top": [], "width": [], "height": []}
+                for ow in ocr_words_list:
+                    words.append(ow.text)
+                    x0 = ow.xmin * pw
+                    y0 = ow.ymin * ph
+                    x1 = ow.xmax * pw
+                    y1 = ow.ymax * ph
+                    ocr["left"].append(x0)
+                    ocr["top"].append(y0)
+                    ocr["width"].append(x1 - x0)
+                    ocr["height"].append(y1 - y0)
 
                 for idx, word in enumerate(words):
                     if not word:
@@ -295,7 +306,7 @@ def redact_pdf_bytes(
                                 num_digits = sum(ch.isdigit() for ch in word)
                                 if num_digits > keep_last_digits:
                                     redact_ratio = (num_digits - keep_last_digits) / max(num_digits, 1)
-                                    rect = fitz.Rect(l, t, l + int(w * redact_ratio), t + h)
+                                    rect = fitz.Rect(l, t, l + w * redact_ratio, t + h)
                                     add_black_redaction_leftmask(page, rect)
                                     hits.append(Hit("", page_index + 1, pat.pattern, word))
                                     continue

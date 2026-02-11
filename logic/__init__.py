@@ -124,10 +124,17 @@ from .redaction import (
 )
 
 # ------------------------
+# OCR engine module exports
+# ------------------------
+from .ocr_engine import OCR_AVAILABLE
+
+# Backward-compat alias
+OCRMYPDF_AVAILABLE = OCR_AVAILABLE
+
+# ------------------------
 # OCR processor module exports
 # ------------------------
 from .ocr_processor import (
-    OCRMYPDF_AVAILABLE,
     ocr_pdf_bytes,
     process_ocr_zip_bytes,
 )
@@ -201,7 +208,8 @@ __all__ = [
     "prefix_excluding_last_n_digits",
     "redact_pdf_bytes",
     "process_zip_bytes",
-    # OCR processor
+    # OCR engine / processor
+    "OCR_AVAILABLE",
     "OCRMYPDF_AVAILABLE",
     "ocr_pdf_bytes",
     "process_ocr_zip_bytes",

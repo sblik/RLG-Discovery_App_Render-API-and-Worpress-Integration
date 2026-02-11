@@ -1,77 +1,84 @@
 """
-OCR processing functionality using ocrmypdf.
+OCR processing functionality using OnnxTR + PyMuPDF.
 
-Minimal implementation: upload PDF(s), run OCR with sensible defaults, return result.
+Upload PDF(s), run OCR with deep-learning models, return searchable PDF.
+No system binaries required (no Tesseract, Ghostscript, etc.).
 """
 from __future__ import annotations
 
 import io
-import os
-import shutil
-import tempfile
 import zipfile
 from pathlib import Path
 
+import fitz  # PyMuPDF
+
+from .ocr_engine import (
+    OCR_AVAILABLE,
+    get_predictor,
+    pdf_page_to_numpy,
+    ocr_pages_words,
+)
 from .utils import _is_mac_resource_junk
-
-# Ensure tesseract is findable on PATH (Docker/Render may install to various locations)
-def _ensure_tesseract_on_path():
-    if shutil.which("tesseract"):
-        return
-    for _candidate in ["/usr/bin", "/usr/local/bin", "/opt/render/project/.apt/usr/bin"]:
-        if os.path.isfile(os.path.join(_candidate, "tesseract")):
-            os.environ["PATH"] = _candidate + os.pathsep + os.environ.get("PATH", "")
-            return
-
-_ensure_tesseract_on_path()
-
-try:
-    import ocrmypdf
-    OCRMYPDF_AVAILABLE = True
-except Exception:
-    ocrmypdf = None
-    OCRMYPDF_AVAILABLE = False
 
 
 def ocr_pdf_bytes(pdf_bytes: bytes) -> bytes:
     """
     Perform OCR on PDF bytes and return searchable PDF bytes.
 
-    Uses hardcoded defaults: deskew=True, force_ocr=True.
-    If the PDF already has OCR text (PriorOcrFoundError), returns original bytes.
-    Other exceptions propagate to the caller.
+    Pages that already contain extractable text are left untouched.
+    Text-less pages are rendered to images, run through OnnxTR, and an
+    invisible text layer is inserted so the PDF becomes searchable.
     """
-    if not OCRMYPDF_AVAILABLE:
-        raise RuntimeError("ocrmypdf is not installed. Install with: pip install ocrmypdf")
-
-    _ensure_tesseract_on_path()
-
-    with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as in_tmp:
-        in_tmp.write(pdf_bytes)
-        in_path = Path(in_tmp.name)
-
-    out_path = in_path.with_suffix(".ocr.pdf")
-
-    try:
-        ocrmypdf.ocr(
-            str(in_path),
-            str(out_path),
-            deskew=True,
-            force_ocr=True,
-            rotate_pages=True,
-            optimize=0,
-            progress_bar=False,
-            jobs=1,
+    if not OCR_AVAILABLE:
+        raise RuntimeError(
+            "onnxtr is not installed. Install with: pip install 'onnxtr[cpu-headless]'"
         )
-        with open(out_path, "rb") as f:
-            return f.read()
 
-    except ocrmypdf.exceptions.PriorOcrFoundError:
-        return pdf_bytes
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
 
-    finally:
-        in_path.unlink(missing_ok=True)
-        out_path.unlink(missing_ok=True)
+    # Collect pages that need OCR and their images
+    pages_to_ocr: list[tuple[int, "fitz.Page"]] = []
+    page_images = []
+
+    for page_index in range(doc.page_count):
+        page = doc.load_page(page_index)
+        existing_text = (page.get_text("text") or "").strip()
+        if existing_text:
+            continue  # already has text — skip
+        pages_to_ocr.append((page_index, page))
+        page_images.append(pdf_page_to_numpy(page, dpi=300))
+
+    if not pages_to_ocr:
+        # All pages already had text
+        out = doc.tobytes()
+        doc.close()
+        return out
+
+    # Batch OCR all text-less pages
+    all_words = ocr_pages_words(page_images)
+
+    for (page_index, page), words in zip(pages_to_ocr, all_words):
+        pw = page.rect.width
+        ph = page.rect.height
+        for w in words:
+            # Convert normalised [0,1] coords to PDF points
+            x0 = w.xmin * pw
+            y0 = w.ymin * ph
+            x1 = w.xmax * pw
+            y1 = w.ymax * ph
+            rect = fitz.Rect(x0, y0, x1, y1)
+            # Insert invisible text (render_mode=3 = invisible fill + stroke)
+            fontsize = max(1.0, (y1 - y0) * 0.8)
+            page.insert_textbox(
+                rect,
+                w.text,
+                fontsize=fontsize,
+                render_mode=3,
+            )
+
+    out = doc.tobytes()
+    doc.close()
+    return out
 
 
 def process_ocr_zip_bytes(zip_bytes: bytes) -> bytes:

@@ -1,24 +1,18 @@
 FROM python:3.11-slim
 
-# Install system dependencies (tesseract, poppler, ghostscript)
+# Install minimal system dependencies (OpenGL for image processing)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    poppler-utils \
-    tesseract-ocr \
-    tesseract-ocr-eng \
-    libgl1 \
-    ghostscript \
-    unpaper && \
+    libgl1 && \
     rm -rf /var/lib/apt/lists/*
-
-# Ensure tesseract is discoverable by ocrmypdf
-ENV PATH="/usr/bin:/usr/local/bin:${PATH}"
-ENV TESSDATA_PREFIX="/usr/share/tesseract-ocr/5/tessdata"
 
 WORKDIR /app
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+
+# Pre-download OnnxTR models so first request isn't slow
+RUN python -c "from onnxtr.models import ocr_predictor; ocr_predictor(det_arch='fast_base', reco_arch='vitstr_base')"
 
 COPY . .
 
