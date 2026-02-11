@@ -52,7 +52,7 @@ def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
             pass
     if PDF2IMAGE_AVAILABLE and pytesseract is not None:
         try:
-            imgs = convert_from_bytes(pdf_bytes, first_page=page_index_zero+1, last_page=page_index_zero+1, dpi=200)
+            imgs = convert_from_bytes(pdf_bytes, first_page=page_index_zero+1, last_page=page_index_zero+1, dpi=300)
             if imgs:
                 return pytesseract.image_to_string(imgs[0]) or ""
         except Exception:

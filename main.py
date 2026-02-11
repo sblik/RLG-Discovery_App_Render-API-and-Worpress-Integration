@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import StreamingResponse, JSONResponse
 from typing import List, Optional
+import asyncio
 import io
 import logging
 import zipfile
@@ -437,7 +438,7 @@ async def ocr_endpoint(
     logger.info("OCR request: %d file(s)", len(file_pairs))
 
     try:
-        out_zip = logic.process_ocr_zip_bytes(input_zip)
+        out_zip = await asyncio.to_thread(logic.process_ocr_zip_bytes, input_zip)
 
         single = _maybe_unwrap_single_file(out_zip)
         if single:

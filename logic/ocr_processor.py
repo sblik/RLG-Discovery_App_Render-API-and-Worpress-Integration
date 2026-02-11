@@ -58,6 +58,9 @@ def ocr_pdf_bytes(pdf_bytes: bytes) -> bytes:
             str(out_path),
             deskew=True,
             force_ocr=True,
+            clean_final=True,
+            rotate_pages=True,
+            oversample=300,
             progress_bar=False,
             jobs=2,
         )
