@@ -7,7 +7,8 @@ RUN apt-get update && \
     tesseract-ocr \
     tesseract-ocr-eng \
     libgl1 \
-    ghostscript && \
+    ghostscript \
+    unpaper && \
     rm -rf /var/lib/apt/lists/*
 
 # Ensure tesseract is discoverable by ocrmypdf
