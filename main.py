@@ -1,5 +1,5 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response
 from typing import List, Optional
 import asyncio
 import io
@@ -443,19 +443,21 @@ async def ocr_endpoint(
         single = _maybe_unwrap_single_file(out_zip)
         if single:
             file_bytes, file_name, media = single
-            return StreamingResponse(
-                io.BytesIO(file_bytes),
+            return Response(
+                content=file_bytes,
                 media_type=media,
                 headers={
                     "Content-Disposition": f'attachment; filename="{file_name}"',
+                    "Content-Length": str(len(file_bytes)),
                 }
             )
 
-        return StreamingResponse(
-            io.BytesIO(out_zip),
+        return Response(
+            content=out_zip,
             media_type="application/zip",
             headers={
                 "Content-Disposition": "attachment; filename=ocr_output.zip",
+                "Content-Length": str(len(out_zip)),
             }
         )
     except Exception as e:
