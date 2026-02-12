@@ -6,6 +6,7 @@ No system binaries required (no Tesseract, Ghostscript, etc.).
 """
 from __future__ import annotations
 
+import gc
 import io
 import zipfile
 from pathlib import Path
@@ -21,7 +22,7 @@ from .ocr_engine import (
 from .utils import _is_mac_resource_junk
 
 
-def ocr_pdf_bytes(pdf_bytes: bytes, dpi: int = 150) -> bytes:
+def ocr_pdf_bytes(pdf_bytes: bytes, dpi: int = 72) -> bytes:
     """
     Perform OCR on PDF bytes and return searchable PDF bytes.
 
@@ -61,6 +62,7 @@ def ocr_pdf_bytes(pdf_bytes: bytes, dpi: int = 150) -> bytes:
         page_img = pdf_page_to_numpy(page, dpi=dpi)
         words_list = ocr_pages_words([page_img])
         del page_img  # free image memory immediately
+        gc.collect()
 
         if not words_list or not words_list[0]:
             continue

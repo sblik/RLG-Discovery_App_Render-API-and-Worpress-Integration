@@ -65,8 +65,8 @@ def get_predictor():
             )
         from onnxtr.models import ocr_predictor as _build
 
-        det = os.environ.get("ONNXTR_DET_ARCH", "fast_base")
-        reco = os.environ.get("ONNXTR_RECO_ARCH", "vitstr_base")
+        det = os.environ.get("ONNXTR_DET_ARCH", "fast_tiny")
+        reco = os.environ.get("ONNXTR_RECO_ARCH", "crnn_mobilenet_v3_small")
         _predictor = _build(det_arch=det, reco_arch=reco)
         return _predictor
 

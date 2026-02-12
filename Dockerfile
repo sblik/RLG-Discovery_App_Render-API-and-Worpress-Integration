@@ -12,7 +12,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Pre-download OnnxTR models so first request isn't slow
-RUN python -c "from onnxtr.models import ocr_predictor; ocr_predictor(det_arch='fast_base', reco_arch='vitstr_base')"
+RUN python -c "from onnxtr.models import ocr_predictor; ocr_predictor(det_arch='fast_tiny', reco_arch='crnn_mobilenet_v3_small')"
 
 COPY . .
 
