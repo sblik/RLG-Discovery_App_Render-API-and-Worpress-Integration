@@ -13,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 # Import business logic
 import logic
+from logic.ocr_engine import OCR_AVAILABLE, get_predictor
+
+# Eagerly load OCR models at startup so memory is accounted for
+# before any request arrives (avoids OOM from model load + inference combined)
+if OCR_AVAILABLE:
+    try:
+        logger.info("Pre-loading OCR predictor...")
+        get_predictor()
+        logger.info("OCR predictor ready.")
+    except Exception:
+        logger.exception("Failed to pre-load OCR predictor")
 
 app = FastAPI(
     title="Discovery One-Stop API",
