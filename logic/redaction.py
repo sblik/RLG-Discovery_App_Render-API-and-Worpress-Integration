@@ -5,6 +5,7 @@ Contains: Functions to redact sensitive content from PDFs using pattern matching
 """
 from __future__ import annotations
 
+import gc
 import io
 import re
 import csv
@@ -33,7 +34,7 @@ except Exception:
     PIKEPDF_AVAILABLE = False
 
 # Optional: OnnxTR OCR engine
-from .ocr_engine import OCR_AVAILABLE, pdf_page_to_numpy, ocr_pages_words
+from .ocr_engine import OCR_AVAILABLE, OCR_DPI, pdf_page_to_numpy, ocr_pages_words
 
 # ------------------------
 # Constants and patterns
@@ -268,8 +269,10 @@ def redact_pdf_bytes(
 
         if not page_had_text and OCR_AVAILABLE:
             try:
-                page_img = pdf_page_to_numpy(page, dpi=300)
+                page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
                 ocr_words_list = ocr_pages_words([page_img])[0]
+                del page_img
+                gc.collect()
 
                 # Build parallel arrays matching the old pytesseract dict layout
                 pw = page.rect.width

@@ -17,6 +17,11 @@ from typing import List, Optional
 import numpy as np
 
 # ---------------------------------------------------------------------------
+# Shared DPI setting (all OCR render paths use this)
+# ---------------------------------------------------------------------------
+OCR_DPI = int(os.environ.get("ONNXTR_DPI", "150"))
+
+# ---------------------------------------------------------------------------
 # Availability flag
 # ---------------------------------------------------------------------------
 try:
@@ -50,8 +55,8 @@ def get_predictor():
     """Return a thread-safe singleton ``ocr_predictor`` instance.
 
     Model architectures can be overridden via env vars:
-        ONNXTR_DET_ARCH   (default ``fast_base``)
-        ONNXTR_RECO_ARCH  (default ``vitstr_base``)
+        ONNXTR_DET_ARCH   (default ``fast_tiny``)
+        ONNXTR_RECO_ARCH  (default ``crnn_mobilenet_v3_small``)
     """
     global _predictor
     if _predictor is not None:
@@ -74,7 +79,7 @@ def get_predictor():
 # Image conversion helpers
 # ---------------------------------------------------------------------------
 
-def pdf_page_to_numpy(page, dpi: int = 300) -> np.ndarray:
+def pdf_page_to_numpy(page, dpi: int = OCR_DPI) -> np.ndarray:
     """Render a PyMuPDF ``fitz.Page`` to an RGB numpy array at *dpi*."""
     zoom = dpi / 72.0
     mat = __import__("fitz").Matrix(zoom, zoom)

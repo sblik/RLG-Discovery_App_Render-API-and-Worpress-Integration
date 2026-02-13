@@ -20,6 +20,7 @@ except Exception:
 # Optional: OnnxTR OCR engine
 from .ocr_engine import (
     OCR_AVAILABLE,
+    OCR_DPI,
     pdf_page_to_numpy,
     image_bytes_to_numpy,
     ocr_single_page_text,
@@ -39,8 +40,9 @@ def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
                     return txt
                 # Fallback: OCR via OnnxTR
                 if OCR_AVAILABLE:
-                    page_img = pdf_page_to_numpy(page, dpi=300)
+                    page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
                     ocr_txt = ocr_single_page_text(page_img)
+                    del page_img
                     doc.close()
                     return ocr_txt
             doc.close()

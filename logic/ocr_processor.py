@@ -15,6 +15,7 @@ import fitz  # PyMuPDF
 
 from .ocr_engine import (
     OCR_AVAILABLE,
+    OCR_DPI,
     get_predictor,
     pdf_page_to_numpy,
     ocr_pages_words,
@@ -22,7 +23,7 @@ from .ocr_engine import (
 from .utils import _is_mac_resource_junk
 
 
-def ocr_pdf_bytes(pdf_bytes: bytes, dpi: int = 72) -> bytes:
+def ocr_pdf_bytes(pdf_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
     """
     Perform OCR on PDF bytes and return searchable PDF bytes.
 
