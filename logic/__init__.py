@@ -136,7 +136,10 @@ OCRMYPDF_AVAILABLE = OCR_AVAILABLE
 # ------------------------
 from .ocr_processor import (
     ocr_pdf_bytes,
+    ocr_image_bytes,
+    ocr_tiff_bytes,
     process_ocr_zip_bytes,
+    OCR_IMAGE_EXTS,
 )
 
 # ------------------------
@@ -212,5 +215,8 @@ __all__ = [
     "OCR_AVAILABLE",
     "OCRMYPDF_AVAILABLE",
     "ocr_pdf_bytes",
+    "ocr_image_bytes",
+    "ocr_tiff_bytes",
+    "OCR_IMAGE_EXTS",
     "process_ocr_zip_bytes",
 ]
