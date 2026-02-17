@@ -383,11 +383,8 @@ function rlg_shortcode_discovery_tools($atts) {
             <button class="rlg-tab" data-tab="index">Index</button>
         </div>
         <div class="rlg-tab-content">
-            <div class="rlg-tab-pane active" id="rlg-pane-bates">
-                <?php echo rlg_shortcode_bates(array()); ?>
-            </div>
-            <div class="rlg-tab-pane" id="rlg-pane-index">
-                <?php echo rlg_shortcode_index(array()); ?>
+            <div class="rlg-tab-pane active" id="rlg-pane-unlock">
+                <?php echo rlg_shortcode_unlock(array()); ?>
             </div>
             <div class="rlg-tab-pane" id="rlg-pane-organize">
                 <?php echo rlg_shortcode_organize(array()); ?>
@@ -398,8 +395,11 @@ function rlg_shortcode_discovery_tools($atts) {
             <div class="rlg-tab-pane" id="rlg-pane-redact">
                 <?php echo rlg_shortcode_redact(array()); ?>
             </div>
-            <div class="rlg-tab-pane" id="rlg-pane-unlock">
-                <?php echo rlg_shortcode_unlock(array()); ?>
+            <div class="rlg-tab-pane" id="rlg-pane-bates">
+                <?php echo rlg_shortcode_bates(array()); ?>
+            </div>
+            <div class="rlg-tab-pane" id="rlg-pane-index">
+                <?php echo rlg_shortcode_index(array()); ?>
             </div>
         </div>
     </div>
