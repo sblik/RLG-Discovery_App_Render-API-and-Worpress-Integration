@@ -375,11 +375,11 @@ function rlg_shortcode_discovery_tools($atts) {
     ?>
     <div class="rlg-discovery-tabs-container">
         <div class="rlg-tabs">
-            <button class="rlg-tab" data-tab="unlock">Unlock</button>
+            <button class="rlg-tab active" data-tab="unlock">Unlock</button>
             <button class="rlg-tab" data-tab="organize">Organize</button>
             <button class="rlg-tab" data-tab="ocr">OCR</button>
             <button class="rlg-tab" data-tab="redact">Redact</button>
-            <button class="rlg-tab active" data-tab="bates">Bates</button>
+            <button class="rlg-tab" data-tab="bates">Bates</button>
             <button class="rlg-tab" data-tab="index">Index</button>
         </div>
         <div class="rlg-tab-content">
