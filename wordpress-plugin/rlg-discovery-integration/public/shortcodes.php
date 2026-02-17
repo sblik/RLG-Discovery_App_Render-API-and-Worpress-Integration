@@ -355,11 +355,11 @@ function rlg_shortcode_ocr($atts) {
     ?>
     <div class="rlg-discovery-tool" id="rlg-ocr-tool">
         <h3>Make Searchable (OCR)</h3>
-        <p>Convert scanned PDFs into searchable documents. Run this before redaction for best results.</p>
+        <p>Convert scanned PDFs or images into searchable documents. Run this before redaction for best results.</p>
         <form class="rlg-discovery-form rlg-sectioned-form" data-endpoint="/ocr" data-response-type="blob">
             <div class="rlg-form-group rlg-divider">
-                <label>Upload PDFs or ZIP</label>
-                <input type="file" name="files" multiple required accept=".pdf,.zip">
+                <label>Upload PDFs, images, or ZIP</label>
+                <input type="file" name="files" multiple required accept=".pdf,.zip,.jpg,.jpeg,.png,.tif,.tiff">
             </div>
             <button type="submit" class="rlg-btn rlg-single-column-btn">Make Searchable</button>
             <div class="rlg-status"></div>
@@ -375,12 +375,12 @@ function rlg_shortcode_discovery_tools($atts) {
     ?>
     <div class="rlg-discovery-tabs-container">
         <div class="rlg-tabs">
-            <button class="rlg-tab active" data-tab="bates">Bates</button>
-            <button class="rlg-tab" data-tab="index">Index</button>
+            <button class="rlg-tab" data-tab="unlock">Unlock</button>
             <button class="rlg-tab" data-tab="organize">Organize</button>
             <button class="rlg-tab" data-tab="ocr">OCR</button>
             <button class="rlg-tab" data-tab="redact">Redact</button>
-            <button class="rlg-tab" data-tab="unlock">Unlock</button>
+            <button class="rlg-tab active" data-tab="bates">Bates</button>
+            <button class="rlg-tab" data-tab="index">Index</button>
         </div>
         <div class="rlg-tab-content">
             <div class="rlg-tab-pane active" id="rlg-pane-bates">
