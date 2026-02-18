@@ -57,12 +57,23 @@
                         throw new Error('Network response was not ok: ' + response.statusText);
                     });
                 }
-                return response.blob();
+
+                var contentType = response.headers.get('Content-Type') || '';
+                var disposition = response.headers.get('Content-Disposition') || '';
+                return response.blob().then(function(blob) {
+                    return { blob: blob, contentType: contentType, disposition: disposition };
+                });
+
             })
-            .then(function(blob) {
+            .then(function(result) {
+                var blob = result.blob;
+                var serverFilename = null;
+                var match = result.disposition.match(/filename="?([^";]+)"?/);
+                if (match) serverFilename = match[1];
+
                 if (endpoint === '/bates') {
                     lastBates.output = blob;
-                    lastBates.filename = 'bates_labeled.zip';
+                    lastBates.filename = serverFilename || 'bates_labeled.zip';
 
                     // Use actual page counts from batesPreviewState if available
                     var prefix = $('#bates-prefix').val();
@@ -124,14 +135,20 @@
                 var a = document.createElement('a');
                 a.href = url;
 
-                var filename = 'download.zip';
-                if (endpoint === '/unlock') filename = 'unlocked_pdfs.zip';
-                if (endpoint === '/organize') filename = 'organized_by_year.zip';
-                if (endpoint === '/bates') filename = 'bates_labeled.zip';
-                if (endpoint === '/redact') filename = 'redacted_output.zip';
-                if (endpoint === '/index') filename = 'discovery_index.xlsx';
-                if (endpoint === '/ocr') filename = 'ocr_output.zip';
-
+                var filename = serverFilename;
+                if (!filename) {
+                    var ct = result.contentType;
+                    var isPdf = ct.indexOf('application/pdf') !== -1;
+                    var isImage = ct.indexOf('image/png') !== -1 || ct.indexOf('image/jpeg') !== -1;
+                    var ext = isPdf ? '.pdf' : isImage ? (ct.indexOf('png') !== -1 ? '.png' : '.jpg') : '.zip';
+                    if (endpoint === '/unlock') filename = isPdf ? 'unlocked.pdf' : 'unlocked_pdfs.zip';
+                    else if (endpoint === '/organize') filename = 'organized_by_year.zip';
+                    else if (endpoint === '/bates') filename = ext !== '.zip' ? 'bates_labeled' + ext : 'bates_labeled.zip';
+                    else if (endpoint === '/redact') filename = isPdf ? 'redacted_output.pdf' : 'redacted_output.zip';
+                    else if (endpoint === '/index') filename = 'discovery_index.xlsx';
+                    else if (endpoint === '/ocr') filename = isPdf ? 'ocr_output.pdf' : 'ocr_output.zip';
+                    else filename = 'download.zip';
+                }
                 a.download = filename;
                 document.body.appendChild(a);
                 a.click();

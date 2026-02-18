@@ -71,6 +71,29 @@
                 $('#last-bates-info').html('<span style="color:#d97706;">&#9888; No Bates output yet. Run Bates Labeler first.</span>').show();
             }
         }
+        var splash = document.getElementById('rlg-splash')
+        if (splash) {
+            var splashImg = splash.querySelector('img');
+            var startFadeTimer = function() {
+                setTimeout(function() {
+                    splash.classList.add('rlg-splash-fade-out')
+                }, 2400);
+            };
+
+            if (splashImg && splashImg.complete) {
+                startFadeTimer();
+            } else if (splashImg) {
+                splashImg.addEventListener('load', startFadeTimer);
+                splashImg.addEventListener('error', startFadeTimer);
+            } else {
+                startFadeTimer();
+            }
+
+            splash.addEventListener('animationend', function() {
+                splash.parentElement.classList.remove('rlg-splash-active');
+                splash.remove();
+            })
+        }
     });
 
     $(document).on('click', '.rlg-color-swatch', function() {

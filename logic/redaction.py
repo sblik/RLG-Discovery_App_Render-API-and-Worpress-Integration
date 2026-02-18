@@ -5,6 +5,7 @@ Contains: Functions to redact sensitive content from PDFs using pattern matching
 """
 from __future__ import annotations
 
+import gc
 import io
 import re
 import csv
@@ -32,11 +33,8 @@ except Exception:
     pikepdf = None
     PIKEPDF_AVAILABLE = False
 
-# Optional: OCR
-try:
-    import pytesseract
-except Exception:
-    pytesseract = None
+# Optional: OnnxTR OCR engine
+from .ocr_engine import OCR_AVAILABLE, OCR_DPI, pdf_page_to_numpy, ocr_pages_words
 
 # ------------------------
 # Constants and patterns
@@ -269,12 +267,28 @@ def redact_pdf_bytes(
         page_text = page.get_text("text") or ""
         page_had_text = bool(page_text.strip())
 
-        if not page_had_text and pytesseract is not None:
+        if not page_had_text and OCR_AVAILABLE:
             try:
-                pix = page.get_pixmap()
-                img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                ocr = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-                words = ocr.get("text", [])
+                page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
+                ocr_words_list = ocr_pages_words([page_img])[0]
+                del page_img
+                gc.collect()
+
+                # Build parallel arrays matching the old pytesseract dict layout
+                pw = page.rect.width
+                ph = page.rect.height
+                words = []
+                ocr = {"left": [], "top": [], "width": [], "height": []}
+                for ow in ocr_words_list:
+                    words.append(ow.text)
+                    x0 = ow.xmin * pw
+                    y0 = ow.ymin * ph
+                    x1 = ow.xmax * pw
+                    y1 = ow.ymax * ph
+                    ocr["left"].append(x0)
+                    ocr["top"].append(y0)
+                    ocr["width"].append(x1 - x0)
+                    ocr["height"].append(y1 - y0)
 
                 for idx, word in enumerate(words):
                     if not word:
@@ -295,7 +309,7 @@ def redact_pdf_bytes(
                                 num_digits = sum(ch.isdigit() for ch in word)
                                 if num_digits > keep_last_digits:
                                     redact_ratio = (num_digits - keep_last_digits) / max(num_digits, 1)
-                                    rect = fitz.Rect(l, t, l + int(w * redact_ratio), t + h)
+                                    rect = fitz.Rect(l, t, l + w * redact_ratio, t + h)
                                     add_black_redaction_leftmask(page, rect)
                                     hits.append(Hit("", page_index + 1, pat.pattern, word))
                                     continue
@@ -455,20 +469,21 @@ def process_zip_bytes(
     with zipfile.ZipFile(out_buf, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
         for arcname, data in redacted_files:
             zout.writestr(arcname, data)
-        csv_s = io.StringIO()
-        cw = csv.writer(csv_s)
-        cw.writerow(["file", "page", "pattern", "match"])
-        for h in audit_hits:
-            cw.writerow([h.rel_path, h.page_num, h.pattern, h.matched_text])
-        zout.writestr("audit.csv", csv_s.getvalue().encode("utf-8"))
-        report = {
-            "files_processed": len(redacted_files),
-            "total_hits": len(audit_hits),
-            "patterns": [p.pattern for p in patterns],
-            "keep_last_digits": keep_last_digits,
-            "require_ssn_context": require_ssn_context,
-        }
-        zout.writestr("report.json", json.dumps(report, indent=2).encode("utf-8"))
+#         ======== This code that is commented out is for an audit.csv file and a report.json file that were used for testing ========
+#         csv_s = io.StringIO()
+#         cw = csv.writer(csv_s)
+#         cw.writerow(["file", "page", "pattern", "match"])
+#         for h in audit_hits:
+#             cw.writerow([h.rel_path, h.page_num, h.pattern, h.matched_text])
+#         zout.writestr("audit.csv", csv_s.getvalue().encode("utf-8"))
+#         report = {
+#             "files_processed": len(redacted_files),
+#             "total_hits": len(audit_hits),
+#             "patterns": [p.pattern for p in patterns],
+#             "keep_last_digits": keep_last_digits,
+#             "require_ssn_context": require_ssn_context,
+#         }
+#         zout.writestr("report.json", json.dumps(report, indent=2).encode("utf-8"))
 
     return out_buf.getvalue(), audit_hits, {
         "files_processed": len(redacted_files),

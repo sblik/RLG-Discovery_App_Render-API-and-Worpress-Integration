@@ -1,6 +1,7 @@
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse, JSONResponse, Response
 from typing import List, Optional
+import asyncio
 import io
 import logging
 import zipfile
@@ -12,6 +13,17 @@ logger = logging.getLogger(__name__)
 
 # Import business logic
 import logic
+from logic.ocr_engine import OCR_AVAILABLE, get_predictor
+
+# Eagerly load OCR models at startup so memory is accounted for
+# before any request arrives (avoids OOM from model load + inference combined)
+if OCR_AVAILABLE:
+    try:
+        logger.info("Pre-loading OCR predictor...")
+        get_predictor()
+        logger.info("OCR predictor ready.")
+    except Exception:
+        logger.exception("Failed to pre-load OCR predictor")
 
 app = FastAPI(
     title="Discovery One-Stop API",
@@ -24,10 +36,30 @@ from fastapi.middleware.cors import CORSMiddleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],  # Allows all origins
-    allow_credentials=True,
+    allow_credentials=False,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
+    expose_headers=["Content-Disposition", "X-Last-Bates-Number", "X-Total-Hits"],
 )
+
+_SINGLE_FILE_TYPES = {
+    ".pdf": "application/pdf",
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+}
+
+def _maybe_unwrap_single_file(zip_bytes: bytes):
+    """If ZIP contains one supported file, return (bytes, filename, media_type). Otherwise None."""
+    with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+        entries = [i for i in zf.infolist() if not i.is_dir()]
+        if len(entries) == 1:
+            ext = entries[0].filename.rsplit(".", 1)[-1].lower() if "." in entries[0].filename else ""
+            media_type = _SINGLE_FILE_TYPES.get(f".{ext}")
+            if media_type:
+                name = entries[0].filename.split('/')[-1]
+                return zf.read(entries[0]), name, media_type
+    return None
 
 @app.get("/")
 def home():
@@ -87,6 +119,18 @@ async def unlock_pdfs_endpoint(
 
     try:
         result_zip = logic.unlock_pdfs(file_pairs, password_mode, password_for_all, password_map)
+
+        single = _maybe_unwrap_single_file(result_zip)
+        if single:
+            file_bytes, file_name, media = single
+            return StreamingResponse(
+                io.BytesIO(file_bytes),
+                media_type=media,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{file_name}"'
+                }
+            )
+
         return StreamingResponse(
             io.BytesIO(result_zip),
             media_type="application/zip",
@@ -199,6 +243,18 @@ async def bates_endpoint(
         # We'll include the records as a CSV inside the ZIP? 
         # Or just return the ZIP for now as per "Swiss Army Knife" flow.
         
+        single = _maybe_unwrap_single_file(zip_bytes)
+        if single:
+            file_bytes, file_name, media = single
+            return StreamingResponse(
+                io.BytesIO(file_bytes),
+                media_type=media,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{file_name}"',
+                    "X-Last-Bates-Number": str(last_used)
+                }
+            )
+
         return StreamingResponse(
             io.BytesIO(zip_bytes),
             media_type="application/zip",
@@ -222,26 +278,30 @@ async def index_endpoint(
     """
     Generate Discovery Index Excel from a ZIP of labeled files.
     """
-    if not file.filename.lower().endswith(".zip"):
-        raise HTTPException(status_code=400, detail="Input must be a ZIP file.")
-
     content = await file.read()
     pairs = []
     rows = []
     
     try:
-        with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
-            for info in zf.infolist():
-                if info.is_dir() or logic._is_mac_resource_junk(info.filename):
-                    continue
-                data = zf.read(info)
-                pairs.append((info.filename, data))
-                
-                # Basic metadata
-                p = logic.Path(info.filename)
-                rel_dir = str(p.parent) if str(p.parent) != "." else ""
-                cat = p.parts[-2] if len(p.parts) > 1 else ""
-                rows.append({"rel_dir": rel_dir, "filename": p.name, "category": cat})
+        if file.filename.lower().endswith(".zip"):
+            with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
+                for info in zf.infolist():
+                    if info.is_dir() or logic._is_mac_resource_junk(info.filename):
+                        continue
+                    data = zf.read(info)
+                    pairs.append((info.filename, data))
+
+                    # Basic metadata
+                    p = logic.Path(info.filename)
+                    rel_dir = str(p.parent) if str(p.parent) != "." else ""
+                    cat = p.parts[-2] if len(p.parts) > 1 else ""
+                    rows.append({"rel_dir": rel_dir, "filename": p.name, "category": cat})
+        elif file.filename.lower().endswith(".pdf"):
+            pairs.append((file.filename, content))
+            p = logic.Path(file.filename)
+            rows.append({"rel_dir": "", "filename": p.name, "category": ""})
+        else:
+            raise HTTPException(status_code=400, detail="Please select a PDF or ZIP file.")
         
         df = logic.pd.DataFrame(rows)
         
@@ -333,7 +393,19 @@ async def redact_endpoint(
             keep_last_digits,
             require_ssn_context=require_ssn_context
         )
-        
+
+        single = _maybe_unwrap_single_file(out_zip)
+        if single:
+            file_bytes, file_name, media = single
+            return StreamingResponse(
+                io.BytesIO(file_bytes),
+                media_type=media,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{file_name}"',
+                    "X-Total-Hits": str(summary["total_hits"])
+                }
+            )
+
         return StreamingResponse(
             io.BytesIO(out_zip),
             media_type="application/zip",
@@ -377,13 +449,26 @@ async def ocr_endpoint(
     logger.info("OCR request: %d file(s)", len(file_pairs))
 
     try:
-        out_zip = logic.process_ocr_zip_bytes(input_zip)
+        out_zip = await asyncio.to_thread(logic.process_ocr_zip_bytes, input_zip)
 
-        return StreamingResponse(
-            io.BytesIO(out_zip),
+        single = _maybe_unwrap_single_file(out_zip)
+        if single:
+            file_bytes, file_name, media = single
+            return Response(
+                content=file_bytes,
+                media_type=media,
+                headers={
+                    "Content-Disposition": f'attachment; filename="{file_name}"',
+                    "Content-Length": str(len(file_bytes)),
+                }
+            )
+
+        return Response(
+            content=out_zip,
             media_type="application/zip",
             headers={
                 "Content-Disposition": "attachment; filename=ocr_output.zip",
+                "Content-Length": str(len(out_zip)),
             }
         )
     except Exception as e:

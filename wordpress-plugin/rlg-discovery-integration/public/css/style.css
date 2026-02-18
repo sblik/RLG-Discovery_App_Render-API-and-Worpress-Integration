@@ -34,6 +34,7 @@
    -------------------------------------------------------------------------- */
 .rlg-discovery-tabs-container {
     max-width: 900px;
+    position: relative;
     font-family: var(--rlg-font-stack);
     color: var(--rlg-text-primary);
 }
@@ -1034,6 +1035,41 @@ section.rlg-page-options {
     outline: none;
     border-color: var(--rlg-accent);
     box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.15);
+}
+
+/* --------------------------------------------------------------------------
+   Scout Loading Splash Image
+   -------------------------------------------------------------------------- */
+.rlg-splash-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--rlg-card-bg);
+    will-change: opacity;
+}
+
+.rlg-splash-overlay img {
+    max-width: 90%;
+    max-height: 80%;
+    object-fit: contain;
+    box-shadow: 0 0 1em #ffffff ;
+}
+
+.rlg-splash-fade-out {
+    animation: splashLanding .6s ease-in-out forwards;
+    pointer-events: none;
+}
+
+.rlg-splash-active {
+    overflow: hidden;
+}
+
+@keyframes splashLanding {
+    from  { opacity: 1; }
+    to    { opacity: 0; }
 }
 
 /* --------------------------------------------------------------------------

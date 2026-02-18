@@ -2,6 +2,7 @@
 Text extraction utilities for PDFs and images.
 
 Contains: OCR and text extraction functions used by multiple modules.
+Uses PyMuPDF for native text extraction and OnnxTR as OCR fallback.
 """
 from __future__ import annotations
 
@@ -16,18 +17,14 @@ try:
 except Exception:
     fitz = None
 
-# Optional: pdf2image (for previews & OCR fallback)
-try:
-    from pdf2image import convert_from_bytes
-    PDF2IMAGE_AVAILABLE = True
-except Exception:
-    PDF2IMAGE_AVAILABLE = False
-
-# Optional: OCR
-try:
-    import pytesseract
-except Exception:
-    pytesseract = None
+# Optional: OnnxTR OCR engine
+from .ocr_engine import (
+    OCR_AVAILABLE,
+    OCR_DPI,
+    pdf_page_to_numpy,
+    image_bytes_to_numpy,
+    ocr_single_page_text,
+)
 
 
 def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
@@ -41,20 +38,14 @@ def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
                 if txt.strip():
                     doc.close()
                     return txt
-                if pytesseract is not None:
-                    pix = page.get_pixmap()
-                    img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
-                    ocr_txt = pytesseract.image_to_string(img) or ""
+                # Fallback: OCR via OnnxTR
+                if OCR_AVAILABLE:
+                    page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
+                    ocr_txt = ocr_single_page_text(page_img)
+                    del page_img
                     doc.close()
                     return ocr_txt
             doc.close()
-        except Exception:
-            pass
-    if PDF2IMAGE_AVAILABLE and pytesseract is not None:
-        try:
-            imgs = convert_from_bytes(pdf_bytes, first_page=page_index_zero+1, last_page=page_index_zero+1, dpi=200)
-            if imgs:
-                return pytesseract.image_to_string(imgs[0]) or ""
         except Exception:
             pass
     return ""
@@ -62,11 +53,11 @@ def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
 
 def _image_bytes_text_ocr(img_bytes: bytes) -> str:
     """Extract text from image bytes using OCR."""
+    if not OCR_AVAILABLE:
+        return ""
     try:
-        with Image.open(io.BytesIO(img_bytes)) as im:
-            im = ImageOps.exif_transpose(im)
-            if pytesseract is not None:
-                return pytesseract.image_to_string(im) or ""
+        page_img = image_bytes_to_numpy(img_bytes)
+        return ocr_single_page_text(page_img)
     except Exception:
         pass
     return ""

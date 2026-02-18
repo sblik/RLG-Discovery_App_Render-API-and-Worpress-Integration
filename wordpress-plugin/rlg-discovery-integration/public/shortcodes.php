@@ -221,7 +221,7 @@ function rlg_shortcode_redact($atts) {
                 <h4>Custom Patterns</h4>
                 <div class="rlg-form-group">
                     <label>Literal Patterns (comma separated)</label>
-                    <input type="text" name="literal_patterns" placeholder="e.g., CONFIDENTIAL, SECRET">
+                    <input type="text" name="literal_patterns" placeholder="e.g., 000001, 000AB2">
                 </div>
                 <div class="rlg-form-group rlg-checkbox-toggle">
                     <label>
@@ -355,11 +355,11 @@ function rlg_shortcode_ocr($atts) {
     ?>
     <div class="rlg-discovery-tool" id="rlg-ocr-tool">
         <h3>Make Searchable (OCR)</h3>
-        <p>Convert scanned PDFs into searchable documents. Run this before redaction for best results.</p>
+        <p>Convert scanned PDFs or images into searchable documents. Run this before redaction for best results.</p>
         <form class="rlg-discovery-form rlg-sectioned-form" data-endpoint="/ocr" data-response-type="blob">
             <div class="rlg-form-group rlg-divider">
-                <label>Upload PDFs or ZIP</label>
-                <input type="file" name="files" multiple required accept=".pdf,.zip">
+                <label>Upload PDFs, images, or ZIP</label>
+                <input type="file" name="files" multiple required accept=".pdf,.zip,.jpg,.jpeg,.png,.tif,.tiff">
             </div>
             <button type="submit" class="rlg-btn rlg-single-column-btn">Make Searchable</button>
             <div class="rlg-status"></div>
@@ -373,21 +373,24 @@ add_shortcode('rlg_ocr', 'rlg_shortcode_ocr');
 function rlg_shortcode_discovery_tools($atts) {
     ob_start();
     ?>
-    <div class="rlg-discovery-tabs-container">
+    <div class="rlg-discovery-tabs-container rlg-splash-active">
+
+        <!--    Scout Loading Image    -->
+        <div class="rlg-splash-overlay" id="rlg-splash">
+            <img src="<?php echo RLG_DISCOVERY_URL; ?>public/images/SCOUT.png" alt="Scout">
+        </div>
+
         <div class="rlg-tabs">
-            <button class="rlg-tab active" data-tab="bates">Bates</button>
-            <button class="rlg-tab" data-tab="index">Index</button>
+            <button class="rlg-tab active" data-tab="unlock">Unlock</button>
             <button class="rlg-tab" data-tab="organize">Organize</button>
             <button class="rlg-tab" data-tab="ocr">OCR</button>
             <button class="rlg-tab" data-tab="redact">Redact</button>
-            <button class="rlg-tab" data-tab="unlock">Unlock</button>
+            <button class="rlg-tab" data-tab="bates">Bates</button>
+            <button class="rlg-tab" data-tab="index">Index</button>
         </div>
         <div class="rlg-tab-content">
-            <div class="rlg-tab-pane active" id="rlg-pane-bates">
-                <?php echo rlg_shortcode_bates(array()); ?>
-            </div>
-            <div class="rlg-tab-pane" id="rlg-pane-index">
-                <?php echo rlg_shortcode_index(array()); ?>
+            <div class="rlg-tab-pane active" id="rlg-pane-unlock">
+                <?php echo rlg_shortcode_unlock(array()); ?>
             </div>
             <div class="rlg-tab-pane" id="rlg-pane-organize">
                 <?php echo rlg_shortcode_organize(array()); ?>
@@ -398,8 +401,11 @@ function rlg_shortcode_discovery_tools($atts) {
             <div class="rlg-tab-pane" id="rlg-pane-redact">
                 <?php echo rlg_shortcode_redact(array()); ?>
             </div>
-            <div class="rlg-tab-pane" id="rlg-pane-unlock">
-                <?php echo rlg_shortcode_unlock(array()); ?>
+            <div class="rlg-tab-pane" id="rlg-pane-bates">
+                <?php echo rlg_shortcode_bates(array()); ?>
+            </div>
+            <div class="rlg-tab-pane" id="rlg-pane-index">
+                <?php echo rlg_shortcode_index(array()); ?>
             </div>
         </div>
     </div>
