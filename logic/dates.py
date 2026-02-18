@@ -113,7 +113,7 @@ PATTERNS: List[re.Pattern] = [
 
 def preprocess_filename(name: str) -> str:
     """Preprocess filename for year extraction."""
-    return re.sub(r"^[A-Za-z]*\d{4,}[ _\.-]*", "", name)
+    return re.sub(r"^[A-Za-z]+\d{4,}[ _\.-]*", "", name)
 
 
 def extract_year_from_name(name: str, min_year: int, max_year: int, year_policy: str = "first") -> Tuple[Optional[int], str]:

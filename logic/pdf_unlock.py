@@ -77,7 +77,7 @@ def unlock_pdfs(
                 continue
             if fname.lower().endswith(".pdf"):
                 status, unlocked_data = _process_pdf(data, _resolve_password(fname))
-                out_name = os.path.splitext(fname)[0] + "_unlocked.pdf"
+                out_name = os.path.splitext(fname)[0] + ".pdf"
                 if unlocked_data is not None:
                     zf.writestr(out_name, unlocked_data)
             elif fname.lower().endswith(".zip"):
@@ -92,7 +92,7 @@ def unlock_pdfs(
                                 continue
                             pw = _resolve_password(member)
                             status, unlocked_data = _process_pdf(inzip.read(member), pw)
-                            out_name = f"{os.path.splitext(member)[0]}_unlocked.pdf"
+                            out_name = f"{os.path.splitext(member)[0]}.pdf"
                             if unlocked_data is not None:
                                 zf.writestr(out_name, unlocked_data)
                 except zipfile.BadZipFile:
