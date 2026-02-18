@@ -305,7 +305,7 @@ def redact_pdf_bytes(
                                 snippet = " ".join(wd for wd in words[lo:hi] if wd)
                                 if not SSN_CONTEXT_WORDS.search(snippet or ""):
                                     continue
-                            if keep_last_digits > 0 and _is_ssn_pat(pat):
+                            if keep_last_digits > 0:
                                 num_digits = sum(ch.isdigit() for ch in word)
                                 if num_digits > keep_last_digits:
                                     redact_ratio = (num_digits - keep_last_digits) / max(num_digits, 1)
@@ -365,7 +365,7 @@ def redact_pdf_bytes(
                         continue
                     if require_ssn_context and _is_ssn_pat(pat) and not _passes_ssn_context_text(page_text, m):
                         continue
-                    if keep_last_digits > 0 and _is_ssn_pat(pat):
+                    if keep_last_digits > 0:
                         prefix = prefix_excluding_last_n_digits(s, keep_last_digits)
                         if prefix:
                             partial_prefixes.append(prefix)

@@ -1057,7 +1057,8 @@ section.rlg-page-options {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--rlg-card-bg);
+    border-radius: 4px;
+    background-color: #F7F4EE;
     will-change: opacity;
 }
 
@@ -1065,7 +1066,6 @@ section.rlg-page-options {
     max-width: 90%;
     max-height: 80%;
     object-fit: contain;
-    box-shadow: 0 0 1em #ffffff ;
 }
 
 .rlg-splash-fade-out {

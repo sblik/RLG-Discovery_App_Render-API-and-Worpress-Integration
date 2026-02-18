@@ -241,7 +241,7 @@ function rlg_shortcode_redact($atts) {
                 </div>
             </section>
             <section class="rlg-section-flex rlg-divider">
-                <h4>SSN Options</h4>
+                <h4>Redaction Options</h4>
                 <div class="rlg-form-group">
                     <label>Keep Last N Digits</label>
                     <input type="number" name="keep_last_digits" value="0" min="0" max="4">
