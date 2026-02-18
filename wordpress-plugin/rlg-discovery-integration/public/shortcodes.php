@@ -373,7 +373,13 @@ add_shortcode('rlg_ocr', 'rlg_shortcode_ocr');
 function rlg_shortcode_discovery_tools($atts) {
     ob_start();
     ?>
-    <div class="rlg-discovery-tabs-container">
+    <div class="rlg-discovery-tabs-container rlg-splash-active">
+
+        <!--    Scout Loading Image    -->
+        <div class="rlg-splash-overlay" id="rlg-splash">
+            <img src="<?php echo RLG_DISCOVERY_URL; ?>public/images/SCOUT.png" alt="Scout">
+        </div>
+
         <div class="rlg-tabs">
             <button class="rlg-tab active" data-tab="unlock">Unlock</button>
             <button class="rlg-tab" data-tab="organize">Organize</button>
