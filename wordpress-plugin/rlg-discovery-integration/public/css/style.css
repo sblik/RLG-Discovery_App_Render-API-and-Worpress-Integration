@@ -33,10 +33,20 @@
    Container - Tabs Wrapper
    -------------------------------------------------------------------------- */
 .rlg-discovery-tabs-container {
+    width: 100%;
     max-width: 900px;
     position: relative;
     font-family: var(--rlg-font-stack);
     color: var(--rlg-text-primary);
+}
+
+.smplfy-center-content {
+    display: flex;
+    justify-content: center;
+}
+
+.smplfy-center-content > .gb-block-layout-column-inner:has(.rlg-discovery-tabs-container) {
+    width: 1000px;
 }
 
 /* --------------------------------------------------------------------------
