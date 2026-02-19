@@ -33,10 +33,20 @@
    Container - Tabs Wrapper
    -------------------------------------------------------------------------- */
 .rlg-discovery-tabs-container {
+    width: 100%;
     max-width: 900px;
     position: relative;
     font-family: var(--rlg-font-stack);
     color: var(--rlg-text-primary);
+}
+
+.smplfy-center-content {
+    display: flex;
+    justify-content: center;
+}
+
+.smplfy-center-content > .gb-block-layout-column-inner:has(.rlg-discovery-tabs-container) {
+    width: 1000px;
 }
 
 /* --------------------------------------------------------------------------
@@ -1047,7 +1057,8 @@ section.rlg-page-options {
     display: flex;
     align-items: center;
     justify-content: center;
-    background-color: var(--rlg-card-bg);
+    border-radius: 4px;
+    background-color: #F7F4EE;
     will-change: opacity;
 }
 
@@ -1055,7 +1066,6 @@ section.rlg-page-options {
     max-width: 90%;
     max-height: 80%;
     object-fit: contain;
-    box-shadow: 0 0 1em #ffffff ;
 }
 
 .rlg-splash-fade-out {
