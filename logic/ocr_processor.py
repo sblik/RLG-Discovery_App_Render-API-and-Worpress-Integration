@@ -37,9 +37,8 @@ def _insert_ocr_text_layer(page: "fitz.Page", words: list) -> None:
     for w in words:
         x0, y0 = w.xmin * pw, w.ymin * ph
         x1, y1 = w.xmax * pw, w.ymax * ph
-        rect = fitz.Rect(x0, y0, x1, y1)
         fontsize = max(1.0, (y1 - y0) * 0.8)
-        page.insert_textbox(rect, w.text, fontsize=fontsize, render_mode=3)
+        page.insert_text(fitz.Point(x0, y1), w.text, fontsize=fontsize, render_mode=3)
 
 
 def ocr_pdf_bytes(pdf_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
