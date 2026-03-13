@@ -42,7 +42,7 @@ function rlg_discovery_enqueue_scripts() {
     wp_enqueue_script('rlg-form-handler', $js_path . 'rlg-form-handler.js', array('rlg-core', 'rlg-bates-preview', 'rlg-index-preview'), $version, true);
 
     // Localize settings on core module
-    $api_url = get_option('rlg_discovery_api_url', 'https://rlg-discovery-app-render-api-and-w0b0.onrender.com');
+    $api_url = get_option('rlg_discovery_api_url', 'https://discovery-one-stop.onrender.com');
     wp_localize_script('rlg-core', 'rlgSettings', array(
         'apiUrl' => rtrim($api_url, '/'),
         'pdfWorkerUrl' => 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
