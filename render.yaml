@@ -2,4 +2,4 @@ services:
   - type: web
     name: discovery-one-stop
     runtime: docker
-    plan: standard
+    plan: pro
