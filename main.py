@@ -439,38 +439,62 @@ async def ocr_endpoint(
         else:
             file_pairs.append((f.filename, content))
 
-    # Wrap in ZIP for uniform processing
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        for fname, data in file_pairs:
-            zf.writestr(fname, data)
-    input_zip = buf.getvalue()
-
     logger.info("OCR request: %d file(s)", len(file_pairs))
 
     try:
-        out_zip = await asyncio.to_thread(logic.process_ocr_zip_bytes, input_zip)
+        result_pairs = await asyncio.to_thread(_ocr_file_pairs, file_pairs)
 
-        single = _maybe_unwrap_single_file(out_zip)
-        if single:
-            file_bytes, file_name, media = single
+        # Single file — return bare PDF/image
+        if len(result_pairs) == 1:
+            name, data = result_pairs[0]
+            ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+            media = _SINGLE_FILE_TYPES.get(f".{ext}", "application/octet-stream")
             return Response(
-                content=file_bytes,
+                content=data,
                 media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{file_name}"',
-                    "Content-Length": str(len(file_bytes)),
+                    "Content-Disposition": f'attachment; filename="{name}"',
+                    "Content-Length": str(len(data)),
                 }
             )
 
+        # Multiple files — return ZIP
+        out_buf = io.BytesIO()
+        with zipfile.ZipFile(out_buf, "w", zipfile.ZIP_DEFLATED) as zout:
+            for name, data in result_pairs:
+                zout.writestr(name, data)
+        zip_bytes = out_buf.getvalue()
+
         return Response(
-            content=out_zip,
+            content=zip_bytes,
             media_type="application/zip",
             headers={
                 "Content-Disposition": "attachment; filename=ocr_output.zip",
-                "Content-Length": str(len(out_zip)),
+                "Content-Length": str(len(zip_bytes)),
             }
         )
     except Exception as e:
         logger.exception("OCR endpoint error")
         raise HTTPException(status_code=500, detail=str(e))
+
+
+def _ocr_file_pairs(file_pairs: list) -> list:
+    """Process file pairs directly, calling the appropriate OCR function per file."""
+    from pathlib import Path
+    results = []
+    for fname, data in file_pairs:
+        ext = Path(fname).suffix.lower()
+        out_name = fname
+        if ext == ".pdf":
+            data = logic.ocr_pdf_bytes(data)
+        elif ext in logic.OCR_IMAGE_EXTS:
+            try:
+                if ext in (".tif", ".tiff"):
+                    data = logic.ocr_tiff_bytes(data)
+                else:
+                    data = logic.ocr_image_bytes(data)
+                out_name = str(Path(fname).with_suffix(".pdf"))
+            except Exception:
+                logger.warning("Failed to OCR image %s, passing through", fname)
+        results.append((out_name, data))
+    return results
