@@ -3,3 +3,4 @@ services:
     name: discovery-one-stop
     runtime: docker
     plan: pro
+    maxRequestTimeout: 300
