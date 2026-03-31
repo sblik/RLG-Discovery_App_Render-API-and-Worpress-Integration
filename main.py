@@ -207,6 +207,7 @@ async def bates_endpoint(
                 for info in zf.infolist():
                     if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
                         file_pairs.append((info.filename, zf.read(info)))
+            del content  # free upload bytes after extraction
         else:
             file_pairs.append((f.filename, content))
 
@@ -218,7 +219,7 @@ async def bates_endpoint(
     logger.info("Bates request: %d file(s)", len(file_pairs))
 
     try:
-        records, last_used, labeled_pairs = await asyncio.to_thread(
+        records, last_used, zip_bytes = await asyncio.to_thread(
             logic.walk_and_label,
             file_pairs,
             prefix=prefix,
@@ -235,17 +236,7 @@ async def bates_endpoint(
             border_all_pt=border_all_pt,
             diagnostics=diagnostics,
         )
-        
-        # Create ZIP of labeled files
-        zip_bytes = logic._zip_from_pairs(labeled_pairs)
-        
-        # We can also return the records as JSON in a header or separate endpoint, 
-        # but for simplicity here we return the ZIP.
-        # Ideally, we might return a multipart response with JSON + ZIP, 
-        # but standard browser download expects a single stream.
-        # We'll include the records as a CSV inside the ZIP? 
-        # Or just return the ZIP for now as per "Swiss Army Knife" flow.
-        
+
         single = _maybe_unwrap_single_file(zip_bytes)
         if single:
             file_bytes, file_name, media = single
