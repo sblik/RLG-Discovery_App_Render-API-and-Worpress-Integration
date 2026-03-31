@@ -273,16 +273,21 @@ def walk_and_label(
         output = tmp / "labeled"
         output.mkdir(parents=True, exist_ok=True)
 
+        staged_count = 0
         for disp, data in input_zip_or_pdfs:
             if _is_mac_resource_junk(disp):
                 continue
             p = staged / disp
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(data)
+            staged_count += 1
+
+        logger.info("Bates labeling: %d file(s) staged", staged_count)
 
         current = start_num
         records: List[BatesRecord] = []
         labeled_pairs: List[Tuple[str, bytes]] = []
+        files_done = 0
 
         for dirpath, dirnames, filenames in os.walk(staged, topdown=True):
             dirnames[:] = [d for d in sorted(dirnames, key=natural_key) if not _is_mac_resource_junk(d)]
@@ -382,8 +387,12 @@ def walk_and_label(
                     pdf.close()
 
                     labeled_pairs.append((str(out.relative_to(output)), out.read_bytes()))
+                    files_done += 1
+                    logger.info("Bates labeled PDF %d/%d: %s (%d pages)",
+                                files_done, staged_count, fname, pages_count)
 
                 except Exception:
+                    logger.exception("Failed to label PDF: %s", fname)
                     continue
 
                 last = current - 1
@@ -426,7 +435,11 @@ def walk_and_label(
                     )
                     labeled_pairs.append((str(out.relative_to(output)), out.read_bytes()))
                     current += 1
+                    files_done += 1
+                    logger.info("Bates labeled image %d/%d: %s",
+                                files_done, staged_count, fname)
                 except Exception:
+                    logger.exception("Failed to label image: %s", fname)
                     continue
 
                 last = current - 1

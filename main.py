@@ -215,8 +215,11 @@ async def bates_endpoint(
     if font_bold:
         font_name = "Helvetica-Bold"
 
+    logger.info("Bates request: %d file(s)", len(file_pairs))
+
     try:
-        records, last_used, labeled_pairs = logic.walk_and_label(
+        records, last_used, labeled_pairs = await asyncio.to_thread(
+            logic.walk_and_label,
             file_pairs,
             prefix=prefix,
             start_num=start_num,
@@ -230,7 +233,7 @@ async def bates_endpoint(
             color_rgb=color_rgb,
             left_punch_margin=left_punch_margin,
             border_all_pt=border_all_pt,
-            diagnostics=diagnostics
+            diagnostics=diagnostics,
         )
         
         # Create ZIP of labeled files
