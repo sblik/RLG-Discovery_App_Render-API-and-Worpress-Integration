@@ -23,6 +23,7 @@ from .utils import (
     _format_label,
     _pil_dpi,
     _is_mac_resource_junk,
+    _zip_dir,
 )
 
 # Optional: pikepdf for PDF manipulation
@@ -231,7 +232,7 @@ def walk_and_label(
     left_punch_margin: float = 0.0,
     border_all_pt: float = 0.0,
     diagnostics: bool = False,
-) -> Tuple[List[BatesRecord], int, List[Tuple[str, bytes]]]:
+) -> Tuple[List[BatesRecord], int, bytes]:
     """
     Apply Bates labels to PDFs and images.
 
@@ -252,7 +253,7 @@ def walk_and_label(
         diagnostics: Enable diagnostic logging
 
     Returns:
-        Tuple of (records, last_used_number, labeled_file_pairs)
+        Tuple of (records, last_used_number, zip_bytes)
     """
     logger = logging.getLogger(__name__)
     if diagnostics:
@@ -284,9 +285,11 @@ def walk_and_label(
 
         logger.info("Bates labeling: %d file(s) staged", staged_count)
 
+        # Free input data now that everything is on disk
+        input_zip_or_pdfs.clear()
+
         current = start_num
         records: List[BatesRecord] = []
-        labeled_pairs: List[Tuple[str, bytes]] = []
         files_done = 0
 
         for dirpath, dirnames, filenames in os.walk(staged, topdown=True):
@@ -386,7 +389,6 @@ def walk_and_label(
                     pdf.save(str(out))
                     pdf.close()
 
-                    labeled_pairs.append((str(out.relative_to(output)), out.read_bytes()))
                     files_done += 1
                     logger.info("Bates labeled PDF %d/%d: %s (%d pages)",
                                 files_done, staged_count, fname, pages_count)
@@ -433,7 +435,6 @@ def walk_and_label(
                         mr, mb, color_rgb,
                         left_punch_margin, border_all_pt
                     )
-                    labeled_pairs.append((str(out.relative_to(output)), out.read_bytes()))
                     current += 1
                     files_done += 1
                     logger.info("Bates labeled image %d/%d: %s",
@@ -454,4 +455,6 @@ def walk_and_label(
                     category=cat,
                 ))
 
-    return records, current - 1, labeled_pairs
+        zip_bytes = _zip_dir(output)
+
+    return records, current - 1, zip_bytes

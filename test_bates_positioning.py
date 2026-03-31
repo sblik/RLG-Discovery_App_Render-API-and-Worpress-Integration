@@ -137,7 +137,7 @@ def run_bates_labeling(pdf_bytes: bytes, filename: str, diagnostics: bool = True
     """Run Bates labeling on a PDF and return the labeled PDF bytes."""
     file_pairs = [(filename, pdf_bytes)]
 
-    records, last_used, labeled_pairs = logic.walk_and_label(
+    records, last_used, zip_bytes = logic.walk_and_label(
         file_pairs,
         prefix="TEST",
         start_num=1,
@@ -154,8 +154,11 @@ def run_bates_labeling(pdf_bytes: bytes, filename: str, diagnostics: bool = True
     for rec in records:
         print(f"    - {rec.filename}: {rec.first_label} to {rec.last_label} ({rec.pages_or_files} pages)")
 
-    if labeled_pairs:
-        return labeled_pairs[0][1]
+    if zip_bytes:
+        with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
+            entries = [i for i in zf.infolist() if not i.is_dir()]
+            if entries:
+                return zf.read(entries[0])
     return b""
 
 
