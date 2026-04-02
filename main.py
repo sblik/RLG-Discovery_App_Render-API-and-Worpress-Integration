@@ -267,7 +267,8 @@ async def bates_endpoint(
 async def index_endpoint(
     file: UploadFile = File(...), # Expecting a labeled ZIP
     party: str = Form("Client"),
-    title_text: str = Form("CLIENT NAME - DOCUMENTS")
+    title_text: str = Form("CLIENT NAME - DOCUMENTS"),
+    bates_metadata: Optional[str] = Form(None),
 ):
     """
     Generate Discovery Index Excel from a ZIP of labeled files.
@@ -298,11 +299,39 @@ async def index_endpoint(
             raise HTTPException(status_code=400, detail="Please select a PDF or ZIP file.")
         
         df = logic.pd.DataFrame(rows)
-        
-        # Scan for Bates
-        det = logic.scan_pairs_for_bates(pairs)
-        if not det.empty:
-            df = df.merge(det[["rel_dir","filename","first_label","last_label"]], on=["rel_dir","filename"], how="left")
+
+        # Use provided Bates metadata if available, otherwise detect from files
+        if bates_metadata:
+            try:
+                meta_list = json.loads(bates_metadata)
+                meta_lookup = {item["name"]: item.get("batesRange", "") for item in meta_list}
+
+                first_labels = []
+                last_labels = []
+                for _, row in df.iterrows():
+                    bates_range = meta_lookup.get(row["filename"], "")
+                    if " - " in bates_range:
+                        parts = bates_range.split(" - ", 1)
+                        first_labels.append(parts[0].strip())
+                        last_labels.append(parts[1].strip())
+                    elif bates_range:
+                        first_labels.append(bates_range.strip())
+                        last_labels.append(bates_range.strip())
+                    else:
+                        first_labels.append("")
+                        last_labels.append("")
+
+                df["first_label"] = first_labels
+                df["last_label"] = last_labels
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                logger.warning("Invalid bates_metadata, falling back to detection: %s", e)
+                det = logic.scan_pairs_for_bates(pairs)
+                if not det.empty:
+                    df = df.merge(det[["rel_dir","filename","first_label","last_label"]], on=["rel_dir","filename"], how="left")
+        else:
+            det = logic.scan_pairs_for_bates(pairs)
+            if not det.empty:
+                df = df.merge(det[["rel_dir","filename","first_label","last_label"]], on=["rel_dir","filename"], how="left")
 
         # Prepare for Excel
         if {"first_label","last_label"}.issubset(df.columns):
