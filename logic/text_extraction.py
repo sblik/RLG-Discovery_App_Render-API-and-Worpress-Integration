@@ -51,6 +51,30 @@ def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
     return ""
 
 
+def _pdf_page_force_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
+    """Force OCR on a PDF page, ignoring any native text layer.
+
+    Used when native text extraction finds page content but no Bates
+    candidates — the Bates overlay (pikepdf Form XObject) may not be
+    extractable by PyMuPDF's get_text().
+    """
+    if fitz is None or not OCR_AVAILABLE:
+        return ""
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        if 0 <= page_index_zero < doc.page_count:
+            page = doc.load_page(page_index_zero)
+            page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
+            ocr_txt = ocr_single_page_text(page_img)
+            del page_img
+            doc.close()
+            return ocr_txt
+        doc.close()
+    except Exception:
+        pass
+    return ""
+
+
 def _image_bytes_text_ocr(img_bytes: bytes) -> str:
     """Extract text from image bytes using OCR."""
     if not OCR_AVAILABLE:

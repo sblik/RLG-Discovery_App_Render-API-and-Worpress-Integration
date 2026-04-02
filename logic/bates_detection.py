@@ -14,7 +14,7 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from .utils import _is_mac_resource_junk
-from .text_extraction import _pdf_page_text_or_ocr, _image_bytes_text_ocr, get_pdf_page_count
+from .text_extraction import _pdf_page_text_or_ocr, _pdf_page_force_ocr, _image_bytes_text_ocr, get_pdf_page_count
 
 # ------------------------
 # Bates detection patterns
@@ -87,11 +87,22 @@ def _extract_bates_for_file(rel_path: str, data: bytes) -> Tuple[Optional[str], 
         txt1 = _pdf_page_text_or_ocr(data, 0)
         c1 = _extract_candidates(txt1)
 
+        # If text extraction returned content but no Bates candidates,
+        # the overlay may be in a Form XObject that PyMuPDF can't extract.
+        # Retry with forced OCR (renders page to image, then runs OCR).
+        if txt1.strip() and not c1:
+            ocr_txt1 = _pdf_page_force_ocr(data, 0)
+            c1 = _extract_candidates(ocr_txt1)
+
         page_count = get_pdf_page_count(data)
         last_index = max(0, page_count - 1)
 
         txtN = _pdf_page_text_or_ocr(data, last_index)
         cN = _extract_candidates(txtN)
+
+        if txtN.strip() and not cN:
+            ocr_txtN = _pdf_page_force_ocr(data, last_index)
+            cN = _extract_candidates(ocr_txtN)
 
         all_cands = c1 + cN
         dom = _choose_dominant_prefix(all_cands)

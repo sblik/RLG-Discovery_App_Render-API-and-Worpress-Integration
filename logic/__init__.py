@@ -41,6 +41,7 @@ from .utils import (
 # ------------------------
 from .text_extraction import (
     _pdf_page_text_or_ocr,
+    _pdf_page_force_ocr,
     _image_bytes_text_ocr,
     get_pdf_page_count,
 )
@@ -166,6 +167,7 @@ __all__ = [
     "_filter_pairs_nonjunk",
     # Text extraction
     "_pdf_page_text_or_ocr",
+    "_pdf_page_force_ocr",
     "_image_bytes_text_ocr",
     "get_pdf_page_count",
     # Dates

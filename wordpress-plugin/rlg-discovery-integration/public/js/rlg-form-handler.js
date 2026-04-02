@@ -35,6 +35,10 @@
                 }
                 formData.delete('file');
                 formData.append('file', lastBates.output, lastBates.filename);
+                // Pass Bates metadata so the server can skip re-detection
+                if (lastBates.files && lastBates.files.length > 0) {
+                    formData.append('bates_metadata', JSON.stringify(lastBates.files));
+                }
             }
         }
 
