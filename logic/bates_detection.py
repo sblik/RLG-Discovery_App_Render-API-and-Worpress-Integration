@@ -14,17 +14,18 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from .utils import _is_mac_resource_junk
-from .text_extraction import _pdf_page_text_or_ocr, _image_bytes_text_ocr, get_pdf_page_count
+from .text_extraction import _pdf_page_text_blocks, _image_bytes_text_ocr, get_pdf_page_count
 
 # ------------------------
 # Bates detection patterns
 # ------------------------
 _BLACKLIST_PREFIXES = {
-    "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC"
+    "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC",
+    "PAGE", "LOREM", "IPSUM",
 }
 
 _CANDIDATE_BATES_RE = re.compile(
-    r"\b([A-Z][A-Z0-9. ]{1,30}?)[\s\-–—]*([0-9]{6,10})\b"
+    r"\b([A-Z][A-Z0-9.]{0,20})[\s\-–—]+([0-9]{6,10})\b"
 )
 
 
@@ -84,14 +85,20 @@ def _extract_bates_for_file(rel_path: str, data: bytes) -> Tuple[Optional[str], 
     ext = Path(rel_path).suffix.lower()
 
     if ext == ".pdf":
-        txt1 = _pdf_page_text_or_ocr(data, 0)
-        c1 = _extract_candidates(txt1)
+        # Search each text block independently so body-text words in
+        # one block can't bleed into a Bates number in another block.
+        blocks_1 = _pdf_page_text_blocks(data, 0)
+        c1 = []
+        for blk in blocks_1:
+            c1.extend(_extract_candidates(blk))
 
         page_count = get_pdf_page_count(data)
         last_index = max(0, page_count - 1)
 
-        txtN = _pdf_page_text_or_ocr(data, last_index)
-        cN = _extract_candidates(txtN)
+        blocks_N = _pdf_page_text_blocks(data, last_index)
+        cN = []
+        for blk in blocks_N:
+            cN.extend(_extract_candidates(blk))
 
         all_cands = c1 + cN
         dom = _choose_dominant_prefix(all_cands)
