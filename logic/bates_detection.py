@@ -20,11 +20,12 @@ from .text_extraction import _pdf_page_text_or_ocr, _pdf_page_force_ocr, _image_
 # Bates detection patterns
 # ------------------------
 _BLACKLIST_PREFIXES = {
-    "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC"
+    "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC",
+    "PAGE", "LOREM", "IPSUM",
 }
 
 _CANDIDATE_BATES_RE = re.compile(
-    r"\b([A-Z][A-Z0-9. ]{1,30}?)[\s\-–—]*([0-9]{6,10})\b"
+    r"\b([A-Z][A-Z0-9.]{0,20})[\s\-–—]+([0-9]{6,10})\b"
 )
 
 
