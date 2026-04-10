@@ -14,25 +14,17 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from .utils import _is_mac_resource_junk
-from .text_extraction import (
-    _pdf_page_margin_blocks,
-    _pdf_page_margin_force_ocr,
-    _pdf_page_text_or_ocr,
-    _pdf_page_force_ocr,
-    _image_bytes_text_ocr,
-    get_pdf_page_count,
-)
+from .text_extraction import _pdf_page_text_or_ocr, _image_bytes_text_ocr, get_pdf_page_count
 
 # ------------------------
 # Bates detection patterns
 # ------------------------
 _BLACKLIST_PREFIXES = {
-    "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC",
-    "PAGE", "LOREM", "IPSUM",
+    "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC"
 }
 
 _CANDIDATE_BATES_RE = re.compile(
-    r"\b([A-Z][A-Z0-9.]{0,20})[\s\-–—]+([0-9]{6,10})\b"
+    r"\b([A-Z][A-Z0-9. ]{1,30}?)[\s\-–—]*([0-9]{6,10})\b"
 )
 
 
@@ -92,31 +84,14 @@ def _extract_bates_for_file(rel_path: str, data: bytes) -> Tuple[Optional[str], 
     ext = Path(rel_path).suffix.lower()
 
     if ext == ".pdf":
-        # Extract text only from bottom margin to avoid body-text false
-        # positives.  Each block is searched independently so adjacent
-        # body-text words can't bleed into a Bates number match.
-        margin_blocks_1 = _pdf_page_margin_blocks(data, 0)
-        c1 = []
-        for blk in margin_blocks_1:
-            c1.extend(_extract_candidates(blk))
-
-        # If native margin text yielded nothing, try OCR on the margin
-        # (handles Form XObject stamps and scanned PDFs).
-        if not c1:
-            ocr_txt1 = _pdf_page_margin_force_ocr(data, 0)
-            c1 = _extract_candidates(ocr_txt1)
+        txt1 = _pdf_page_text_or_ocr(data, 0)
+        c1 = _extract_candidates(txt1)
 
         page_count = get_pdf_page_count(data)
         last_index = max(0, page_count - 1)
 
-        margin_blocks_N = _pdf_page_margin_blocks(data, last_index)
-        cN = []
-        for blk in margin_blocks_N:
-            cN.extend(_extract_candidates(blk))
-
-        if not cN:
-            ocr_txtN = _pdf_page_margin_force_ocr(data, last_index)
-            cN = _extract_candidates(ocr_txtN)
+        txtN = _pdf_page_text_or_ocr(data, last_index)
+        cN = _extract_candidates(txtN)
 
         all_cands = c1 + cN
         dom = _choose_dominant_prefix(all_cands)
