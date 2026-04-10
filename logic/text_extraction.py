@@ -59,7 +59,11 @@ def _pdf_page_margin_blocks(pdf_bytes: bytes, page_index_zero: int,
 
 def _pdf_page_margin_force_ocr(pdf_bytes: bytes, page_index_zero: int,
                                 margin_fraction: float = 0.12) -> str:
-    """Force OCR on the bottom margin of a PDF page."""
+    """Force OCR on a PDF page, returning only text from the bottom margin.
+
+    OCR runs on the full page (small crops confuse the engine), then
+    word bounding boxes are used to keep only bottom-margin text.
+    """
     if fitz is None or not OCR_AVAILABLE:
         return ""
     try:
@@ -68,11 +72,15 @@ def _pdf_page_margin_force_ocr(pdf_bytes: bytes, page_index_zero: int,
             page = doc.load_page(page_index_zero)
             page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
             doc.close()
-            crop_y = int(page_img.shape[0] * (1 - margin_fraction))
-            margin_img = page_img[crop_y:, :, :]
-            txt = ocr_single_page_text(margin_img)
-            del page_img, margin_img
-            return txt
+            from .ocr_engine import ocr_pages_words
+            word_lists = ocr_pages_words([page_img])
+            del page_img
+            if not word_lists or not word_lists[0]:
+                return ""
+            threshold_y = 1.0 - margin_fraction
+            margin_words = [w.text for w in word_lists[0]
+                           if w.ymin >= threshold_y]
+            return " ".join(margin_words)
         doc.close()
     except Exception:
         pass
