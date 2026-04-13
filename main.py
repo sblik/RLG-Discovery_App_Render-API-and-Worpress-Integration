@@ -4,6 +4,7 @@ from typing import List, Optional
 import asyncio
 import io
 import logging
+import os
 import zipfile
 import json
 from datetime import datetime
@@ -48,6 +49,9 @@ _SINGLE_FILE_TYPES = {
     ".jpg": "image/jpeg",
     ".jpeg": "image/jpeg",
 }
+
+OCR_CONCURRENCY = int(os.environ.get("OCR_CONCURRENCY", "1"))
+_ocr_semaphore = asyncio.Semaphore(OCR_CONCURRENCY)
 
 def _maybe_unwrap_single_file(zip_bytes: bytes):
     """If ZIP contains one supported file, return (bytes, filename, media_type). Otherwise None."""
@@ -465,7 +469,8 @@ async def ocr_endpoint(
     logger.info("OCR request: %d file(s)", len(file_pairs))
 
     try:
-        result_pairs = await asyncio.to_thread(_ocr_file_pairs, file_pairs)
+        async with _ocr_semaphore:
+            result_pairs = await asyncio.to_thread(_ocr_file_pairs, file_pairs)
 
         # Single file — return bare PDF/image
         if len(result_pairs) == 1:
