@@ -45,12 +45,16 @@ def _insert_ocr_text_layer(page: "fitz.Page", words: list) -> None:
             continue
         # Font size based on height — keeps line heights consistent
         fontsize = max(1.0, target_h * 0.8)
+        # Append a trailing space so PyMuPDF's text extractor preserves
+        # word boundaries. Without it, OnnxTR's tight word boxes cause
+        # adjacent words to merge on extraction (e.g. "PlaintiffAcme").
+        text = w.text + " "
         # Horizontal scale to match bounding box width
-        text_w = fitz.get_text_length(w.text, fontname="helv", fontsize=fontsize)
+        text_w = fitz.get_text_length(text, fontname="helv", fontsize=fontsize)
         h_scale = (target_w / text_w) if text_w > 0 else 1.0
         morph = (fitz.Point(x0, y1), fitz.Matrix(h_scale, 1.0))
         page.insert_text(
-            fitz.Point(x0, y1), w.text,
+            fitz.Point(x0, y1), text,
             fontname="helv", fontsize=fontsize,
             render_mode=3, morph=morph,
         )
