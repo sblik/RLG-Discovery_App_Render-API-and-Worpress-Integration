@@ -9,12 +9,21 @@ import io
 import json
 import os
 import logging
+import shutil
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 BATES_RECORDS_SIDECAR = "__bates_records.json"
+
+
+def _norm_rel_path(rel_dir: str, filename: str) -> str:
+    """Normalize a rel_dir/filename pair into a forward-slash key."""
+    rel_dir = (rel_dir or "").replace("\\", "/").strip("/")
+    if rel_dir and rel_dir != ".":
+        return f"{rel_dir}/{filename}"
+    return filename
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from reportlab.pdfgen import canvas as rl_canvas
@@ -235,6 +244,7 @@ def walk_and_label(
     left_punch_margin: float = 0.0,
     border_all_pt: float = 0.0,
     diagnostics: bool = False,
+    skip_existing: Optional[Dict[str, Tuple[str, str]]] = None,
 ) -> Tuple[List[BatesRecord], int, bytes]:
     """
     Apply Bates labels to PDFs and images.
@@ -254,10 +264,17 @@ def walk_and_label(
         left_punch_margin: Left margin for 3-hole punch
         border_all_pt: Border around all edges
         diagnostics: Enable diagnostic logging
+        skip_existing: Optional mapping of rel_path → (first_label, last_label)
+            for files that already carry a Bates label and should be passed
+            through unchanged. Keys use forward-slash rel_dir/filename form.
+            Files in this map are copied to the output verbatim and appear
+            in the returned BatesRecord list with the provided labels, so
+            the sidecar captures them alongside freshly-stamped files.
 
     Returns:
         Tuple of (records, last_used_number, zip_bytes)
     """
+    skip_map = skip_existing or {}
     logger = logging.getLogger(__name__)
     if diagnostics:
         logger.setLevel(logging.DEBUG)
@@ -309,6 +326,40 @@ def walk_and_label(
             for fname in pdfs:
                 src = Path(dirpath) / fname
                 out = out_dir / fname
+                skip_key = _norm_rel_path(rel_dir, fname)
+
+                # Smart skip: file already has a detected Bates label, so
+                # pass it through unchanged and record the detected range
+                # in the sidecar.
+                if skip_key in skip_map:
+                    first_label, last_label = skip_map[skip_key]
+                    try:
+                        shutil.copyfile(src, out)
+                        # Count pages for the record; fall back to 1 on error.
+                        pages_count = 1
+                        try:
+                            with pikepdf.open(str(src)) as _pdf:
+                                pages_count = len(_pdf.pages)
+                        except Exception:
+                            pass
+                        files_done += 1
+                        logger.info(
+                            "Bates preserved PDF %d/%d: %s (%s → %s)",
+                            files_done, staged_count, fname, first_label, last_label,
+                        )
+                        cat = Path(rel_dir).parts[-1] if rel_dir not in (".", "") and Path(rel_dir).parts else ""
+                        records.append(BatesRecord(
+                            rel_dir=rel_dir,
+                            filename=fname,
+                            pages_or_files=pages_count,
+                            first_label=first_label,
+                            last_label=last_label,
+                            category=cat,
+                        ))
+                    except Exception:
+                        logger.exception("Failed to preserve PDF: %s", fname)
+                    continue
+
                 first = current
                 pages_count = 0
 
@@ -415,6 +466,32 @@ def walk_and_label(
             for fname in imgs:
                 src = Path(dirpath) / fname
                 out = out_dir / fname
+                skip_key = _norm_rel_path(rel_dir, fname)
+
+                # Smart skip: image already has a detected label (e.g. a
+                # sidecar-backed preserved entry). Copy through unchanged.
+                if skip_key in skip_map:
+                    first_label, last_label = skip_map[skip_key]
+                    try:
+                        shutil.copyfile(src, out)
+                        files_done += 1
+                        logger.info(
+                            "Bates preserved image %d/%d: %s (%s → %s)",
+                            files_done, staged_count, fname, first_label, last_label,
+                        )
+                        cat = Path(rel_dir).parts[-1] if rel_dir not in (".", "") and Path(rel_dir).parts else ""
+                        records.append(BatesRecord(
+                            rel_dir=rel_dir,
+                            filename=fname,
+                            pages_or_files=1,
+                            first_label=first_label,
+                            last_label=last_label,
+                            category=cat,
+                        ))
+                    except Exception:
+                        logger.exception("Failed to preserve image: %s", fname)
+                    continue
+
                 first = current
 
                 try:
