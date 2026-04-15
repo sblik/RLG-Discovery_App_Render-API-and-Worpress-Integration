@@ -106,6 +106,7 @@
 
                             lastBates.files.push({
                                 name: file.name,
+                                path: file.fullPath || file.name,
                                 category: getCategoryFromPath(file.fullPath),
                                 batesRange: pageCount > 1 ? firstLabel + ' - ' + lastLabel : firstLabel
                             });
