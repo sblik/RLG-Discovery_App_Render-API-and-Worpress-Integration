@@ -61,6 +61,58 @@ def _pdf_page_text_blocks(pdf_bytes: bytes, page_index_zero: int) -> list:
     return []
 
 
+def _pdf_page_margin_blocks(
+    pdf_bytes: bytes,
+    page_index_zero: int,
+    margin_fraction: float = 0.12,
+) -> list:
+    """Return text blocks from the bottom margin of a PDF page.
+
+    Bates stamps are placed in the bottom margin by the labeler, so
+    searching only that region eliminates body-text false positives
+    (e.g. "TRS Participant ID: 00549327" being mistaken for a bare
+    Bates number). Each element is the text of one positioned block
+    so callers can search blocks independently and avoid cross-block
+    false positives.
+
+    Uses native text extraction only. No OCR fallback — the previous
+    OCR fallback (commit 0adcd61) was reverted because cropped-image
+    OCR on small margin strips was unreliable. If the stamp was
+    baked into a raster image with no text layer, this function
+    returns [] and the caller should fall back to a different path.
+    """
+    if fitz is None:
+        return []
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        try:
+            if not (0 <= page_index_zero < doc.page_count):
+                return []
+            page = doc.load_page(page_index_zero)
+            # fitz PDF coordinate space: y=0 is at the TOP of the page,
+            # so "bottom margin" is where y is closest to page.rect.height.
+            # A block qualifies if its top edge (block[1]) falls below the
+            # margin threshold — that catches stamps that sit entirely
+            # within the margin even when they wrap to multiple lines.
+            threshold_y = page.rect.height * (1 - margin_fraction)
+            blocks = page.get_text("blocks")
+            result = []
+            for b in blocks:
+                # block: (x0, y0, x1, y1, text, block_no, block_type)
+                if len(b) < 7 or b[6] != 0:
+                    continue
+                if b[1] < threshold_y:
+                    continue
+                txt = str(b[4]).strip()
+                if txt:
+                    result.append(txt)
+            return result
+        finally:
+            doc.close()
+    except Exception:
+        return []
+
+
 def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
     """Extract text from a PDF page, falling back to OCR if needed."""
     if fitz is not None:

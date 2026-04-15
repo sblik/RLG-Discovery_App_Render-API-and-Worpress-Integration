@@ -14,7 +14,12 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from .utils import _is_mac_resource_junk
-from .text_extraction import _pdf_page_text_blocks, _image_bytes_text_ocr, get_pdf_page_count
+from .text_extraction import (
+    _pdf_page_text_blocks,
+    _pdf_page_margin_blocks,
+    _image_bytes_text_ocr,
+    get_pdf_page_count,
+)
 
 # ------------------------
 # Bates detection patterns
@@ -120,9 +125,12 @@ def _extract_bates_for_file(rel_path: str, data: bytes) -> Tuple[Optional[str], 
     ext = Path(rel_path).suffix.lower()
 
     if ext == ".pdf":
-        # Search each text block independently so body-text words in
-        # one block can't bleed into a Bates number in another block.
-        blocks_1 = _pdf_page_text_blocks(data, 0)
+        # Restrict detection to the bottom margin of the page, where the
+        # labeler actually places its stamps. Searching the full page
+        # picked up body-text tokens like "TRS Participant ID: 00549327"
+        # or "LOT 000136" as false Bates labels. Margin-only blocks
+        # eliminates that whole class of false positive at the source.
+        blocks_1 = _pdf_page_margin_blocks(data, 0)
         c1 = []
         for blk in blocks_1:
             c1.extend(_extract_candidates(blk))
@@ -130,7 +138,7 @@ def _extract_bates_for_file(rel_path: str, data: bytes) -> Tuple[Optional[str], 
         page_count = get_pdf_page_count(data)
         last_index = max(0, page_count - 1)
 
-        blocks_N = _pdf_page_text_blocks(data, last_index)
+        blocks_N = _pdf_page_margin_blocks(data, last_index)
         cN = []
         for blk in blocks_N:
             cN.extend(_extract_candidates(blk))
@@ -161,7 +169,9 @@ def _extract_bates_for_file(rel_path: str, data: bytes) -> Tuple[Optional[str], 
                 pass
             return first_tok, last_tok
 
-        # Fallback: bare zero-padded numbers (labels with no prefix)
+        # Fallback: bare zero-padded numbers (labels with no prefix).
+        # Also restricted to margin blocks, so bare numbers in page
+        # headers/body/footnotes can't be mistaken for Bates stamps.
         return _extract_bare_bates(blocks_1, blocks_N)
 
     elif ext in {".jpg", ".jpeg", ".png"}:
