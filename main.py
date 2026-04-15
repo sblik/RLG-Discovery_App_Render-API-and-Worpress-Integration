@@ -280,12 +280,26 @@ async def index_endpoint(
     content = await file.read()
     pairs = []
     rows = []
-    
+    sidecar_records: Optional[list] = None  # __bates_records.json from /bates output
+
     try:
         if file.filename.lower().endswith(".zip"):
             with zipfile.ZipFile(io.BytesIO(content), "r") as zf:
                 for info in zf.infolist():
                     if info.is_dir() or logic._is_mac_resource_junk(info.filename):
+                        continue
+                    # The sidecar is the server's authoritative record of
+                    # what was stamped. Read it once and exclude from the
+                    # document list so it doesn't land in the Excel.
+                    if logic._is_bates_sidecar(info.filename):
+                        try:
+                            sidecar_records = json.loads(zf.read(info).decode("utf-8"))
+                            if not isinstance(sidecar_records, list):
+                                logger.warning("Bates sidecar is not a list, ignoring")
+                                sidecar_records = None
+                        except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                            logger.warning("Failed to parse bates sidecar: %s", e)
+                            sidecar_records = None
                         continue
                     data = zf.read(info)
                     pairs.append((info.filename, data))
@@ -320,7 +334,51 @@ async def index_endpoint(
                 yield _norm_meta_key(f"{rel_dir}/{filename}")
             yield _norm_meta_key(filename)
 
-        if bates_metadata:
+        # Priority order for Bates resolution:
+        #   1. Sidecar (__bates_records.json) — authoritative, emitted by /bates
+        #   2. bates_metadata form field — legacy plugin payload
+        #   3. scan_pairs_for_bates — detection fallback (reads stamps from files)
+        if sidecar_records is not None:
+            # Build lookup from the sidecar. Each record has first_label,
+            # last_label, and a path keyed by rel_dir/filename.
+            side_lookup = {}
+            for rec in sidecar_records:
+                if not isinstance(rec, dict):
+                    continue
+                path = rec.get("path") or ""
+                rel_dir = rec.get("rel_dir") or ""
+                fname = rec.get("filename") or ""
+                first_label = str(rec.get("first_label", "") or "")
+                last_label = str(rec.get("last_label", "") or first_label)
+                entry = (first_label, last_label)
+                if path:
+                    side_lookup[_norm_meta_key(path)] = entry
+                if rel_dir or fname:
+                    if rel_dir and rel_dir != ".":
+                        side_lookup.setdefault(_norm_meta_key(f"{rel_dir}/{fname}"), entry)
+                    else:
+                        side_lookup.setdefault(_norm_meta_key(fname), entry)
+                if fname:
+                    # Filename-only fallback for single-file edge cases.
+                    side_lookup.setdefault(_norm_meta_key(fname), entry)
+
+            first_labels = []
+            last_labels = []
+            for _, row in df.iterrows():
+                entry = None
+                for k in _row_meta_keys(row.get("rel_dir", ""), row.get("filename", "")):
+                    if k in side_lookup:
+                        entry = side_lookup[k]
+                        break
+                if entry:
+                    first_labels.append(entry[0])
+                    last_labels.append(entry[1])
+                else:
+                    first_labels.append("")
+                    last_labels.append("")
+            df["first_label"] = first_labels
+            df["last_label"] = last_labels
+        elif bates_metadata:
             try:
                 meta_list = json.loads(bates_metadata)
                 # Build lookup keyed by full path when available, falling back

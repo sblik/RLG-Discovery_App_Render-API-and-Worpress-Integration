@@ -6,12 +6,15 @@ Contains: Functions to apply Bates number labels to PDFs and images.
 from __future__ import annotations
 
 import io
+import json
 import os
 import logging
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional, Tuple
+
+BATES_RECORDS_SIDECAR = "__bates_records.json"
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 from reportlab.pdfgen import canvas as rl_canvas
@@ -454,6 +457,30 @@ def walk_and_label(
                     last_label=_format_label(prefix, last, digits, with_space=True),
                     category=cat,
                 ))
+
+        # Write sidecar so downstream consumers (plugin preview, /index,
+        # other tools) can rely on the server's authoritative Bates
+        # assignments instead of re-predicting them from ordering.
+        sidecar_payload = []
+        for rec in records:
+            rel_dir = (rec.rel_dir or "").replace("\\", "/").strip("/")
+            if rel_dir and rel_dir != ".":
+                path = f"{rel_dir}/{rec.filename}"
+            else:
+                path = rec.filename
+            sidecar_payload.append({
+                "path": path,
+                "rel_dir": rel_dir,
+                "filename": rec.filename,
+                "first_label": rec.first_label,
+                "last_label": rec.last_label,
+                "pages": rec.pages_or_files,
+                "category": rec.category,
+            })
+        (output / BATES_RECORDS_SIDECAR).write_text(
+            json.dumps(sidecar_payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
         zip_bytes = _zip_dir(output)
 

@@ -22,12 +22,57 @@
         try {
             var zip = await JSZip.loadAsync(zipData);
             var files = [];
+            var sidecarLookup = null;
+
+            // First pass: read the Bates records sidecar if present. This
+            // is the server's authoritative record of what was stamped,
+            // keyed by rel_dir/filename. When present, the plugin should
+            // trust these ranges instead of predicting numbers client-side.
+            if (zip.files['__bates_records.json']) {
+                try {
+                    var sidecarText = await zip.files['__bates_records.json'].async('string');
+                    var records = JSON.parse(sidecarText);
+                    if (Array.isArray(records)) {
+                        sidecarLookup = {};
+                        records.forEach(function(rec) {
+                            if (!rec || typeof rec !== 'object') return;
+                            var first = (rec.first_label || '').toString().trim();
+                            var last = (rec.last_label || first).toString().trim();
+                            var range = (first && last && first !== last)
+                                ? first + ' - ' + last
+                                : (first || last || '');
+                            var entry = {
+                                range: range,
+                                first: first,
+                                last: last,
+                                pages: rec.pages || 1,
+                                category: rec.category || ''
+                            };
+                            if (rec.path) sidecarLookup[rec.path] = entry;
+                            if (rec.rel_dir && rec.filename) {
+                                var k = rec.rel_dir + '/' + rec.filename;
+                                if (!sidecarLookup[k]) sidecarLookup[k] = entry;
+                            }
+                            // Filename-only fallback for lookups that only
+                            // have the bare name.
+                            if (rec.filename && !sidecarLookup[rec.filename]) {
+                                sidecarLookup[rec.filename] = entry;
+                            }
+                        });
+                    }
+                } catch (e) {
+                    console.warn('Failed to parse __bates_records.json sidecar:', e);
+                    sidecarLookup = null;
+                }
+            }
 
             for (var filename in zip.files) {
                 var zipEntry = zip.files[filename];
 
-                // Skip directories and macOS junk
+                // Skip directories, macOS junk, and the Bates sidecar
+                // (which is metadata, not a document)
                 if (zipEntry.dir) continue;
+                if (filename === '__bates_records.json') continue;
                 if (filename.startsWith('__MACOSX/')) continue;
                 if (filename.startsWith('._')) continue;
                 if (filename.toLowerCase().includes('.ds_store')) continue;
@@ -35,17 +80,35 @@
                 var lowerName = filename.toLowerCase();
                 if (lowerName.endsWith('.pdf') || /\.(jpg|jpeg|png|gif|bmp)$/.test(lowerName)) {
                     var data = await zipEntry.async('arraybuffer');
-                    files.push({
+                    var entry = {
                         name: filename.split('/').pop(), // Just the filename
                         fullPath: filename,
                         data: data
-                    });
+                    };
+                    // Attach sidecar-provided Bates info so downstream
+                    // preview/form handlers can read it without re-predicting.
+                    if (sidecarLookup) {
+                        var lookup = sidecarLookup[filename]
+                            || sidecarLookup[entry.name];
+                        if (lookup) {
+                            entry.batesRange = lookup.range;
+                            entry.batesFirst = lookup.first;
+                            entry.batesLast = lookup.last;
+                            entry.pageCount = lookup.pages;
+                            entry.category = lookup.category;
+                        }
+                    }
+                    files.push(entry);
                 }
             }
 
-            // Sort files naturally
+            // Sort by full path so the plugin's ordering matches the server's
+            // os.walk(sorted) traversal. Using just the bare name caused the
+            // preview to predict Bates ranges in a different order than the
+            // server stamped, producing a mismatch between preview and Excel
+            // on multi-folder zips.
             files.sort(function(a, b) {
-                return a.name.localeCompare(b.name, undefined, { numeric: true });
+                return a.fullPath.localeCompare(b.fullPath, undefined, { numeric: true, sensitivity: 'base' });
             });
 
             return files;

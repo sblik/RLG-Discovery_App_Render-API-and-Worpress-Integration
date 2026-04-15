@@ -145,6 +145,12 @@ def _is_mac_resource_junk(path_str: str) -> bool:
     return False
 
 
+def _is_bates_sidecar(path_str: str) -> bool:
+    """Check if a zip entry is the Bates records sidecar (__bates_records.json)."""
+    p = str(path_str).replace("\\", "/").lstrip("./")
+    return p == "__bates_records.json"
+
+
 def _filter_pairs_nonjunk(pairs: List[Tuple[str, bytes]]) -> List[Tuple[str, bytes]]:
     """Filter out macOS junk files from a list of file pairs."""
     return [(rel, b) for rel, b in pairs if not _is_mac_resource_junk(rel)]

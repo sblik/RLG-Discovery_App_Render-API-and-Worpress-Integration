@@ -33,6 +33,7 @@ from .utils import (
     _format_label,
     _pil_dpi,
     _is_mac_resource_junk,
+    _is_bates_sidecar,
     _filter_pairs_nonjunk,
 )
 
@@ -163,6 +164,7 @@ __all__ = [
     "_format_label",
     "_pil_dpi",
     "_is_mac_resource_junk",
+    "_is_bates_sidecar",
     "_filter_pairs_nonjunk",
     # Text extraction
     "_pdf_page_text_or_ocr",

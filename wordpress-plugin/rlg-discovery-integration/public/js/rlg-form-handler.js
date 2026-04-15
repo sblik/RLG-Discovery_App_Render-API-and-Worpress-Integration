@@ -75,6 +75,36 @@
                 var match = result.disposition.match(/filename="?([^";]+)"?/);
                 if (match) serverFilename = match[1];
 
+                // Shared download trigger — runs after /bates finishes its
+                // async sidecar work, and synchronously for other endpoints.
+                function triggerDownload() {
+                    var url = window.URL.createObjectURL(blob);
+                    var a = document.createElement('a');
+                    a.href = url;
+
+                    var filename = serverFilename;
+                    if (!filename) {
+                        var ct = result.contentType;
+                        var isPdf = ct.indexOf('application/pdf') !== -1;
+                        var isImage = ct.indexOf('image/png') !== -1 || ct.indexOf('image/jpeg') !== -1;
+                        var ext = isPdf ? '.pdf' : isImage ? (ct.indexOf('png') !== -1 ? '.png' : '.jpg') : '.zip';
+                        if (endpoint === '/unlock') filename = isPdf ? 'unlocked.pdf' : 'unlocked_pdfs.zip';
+                        else if (endpoint === '/organize') filename = 'organized_by_year.zip';
+                        else if (endpoint === '/bates') filename = ext !== '.zip' ? 'bates_labeled' + ext : 'bates_labeled.zip';
+                        else if (endpoint === '/redact') filename = isPdf ? 'redacted_output.pdf' : 'redacted_output.zip';
+                        else if (endpoint === '/index') filename = 'discovery_index.xlsx';
+                        else if (endpoint === '/ocr') filename = isPdf ? 'ocr_output.pdf' : 'ocr_output.zip';
+                        else filename = 'download.zip';
+                    }
+                    a.download = filename;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
+                    window.URL.revokeObjectURL(url);
+
+                    $btn.prop('disabled', false);
+                }
+
                 if (endpoint === '/bates') {
                     lastBates.output = blob;
                     lastBates.filename = serverFilename || 'bates_labeled.zip';
@@ -85,7 +115,6 @@
                     var digits = parseInt($('#bates-digits').val()) || 8;
 
                     lastBates.files = [];
-                    var currentNum = startNum;
 
                     // Helper to extract category from file path
                     function getCategoryFromPath(fullPath) {
@@ -97,70 +126,99 @@
                         return '';
                     }
 
-                    if (batesState.files && batesState.files.length > 0) {
-                        // Use preview state which has actual page counts
-                        batesState.files.forEach(function(file) {
-                            var pageCount = file.pageCount || 1;
-                            var firstLabel = RLG.formatBatesLabel(prefix, currentNum, digits);
-                            var lastLabel = RLG.formatBatesLabel(prefix, currentNum + pageCount - 1, digits);
+                    // Try to read the server's authoritative Bates records
+                    // from the sidecar embedded in the returned zip. When
+                    // present, these are the real ranges stamped on the
+                    // real files — no client-side prediction needed.
+                    return blob.arrayBuffer().then(function(zipBuffer) {
+                        return RLG.extractFilesFromZip(zipBuffer);
+                    }).then(function(zipFiles) {
+                        var usedSidecar = zipFiles.some(function(f) { return !!f.batesRange; });
 
-                            lastBates.files.push({
-                                name: file.name,
-                                path: file.fullPath || file.name,
-                                category: getCategoryFromPath(file.fullPath),
-                                batesRange: pageCount > 1 ? firstLabel + ' - ' + lastLabel : firstLabel
+                        if (usedSidecar) {
+                            // Sidecar path: trust the server's ranges verbatim.
+                            zipFiles.forEach(function(file) {
+                                lastBates.files.push({
+                                    name: file.name,
+                                    path: file.fullPath || file.name,
+                                    category: file.category || getCategoryFromPath(file.fullPath),
+                                    batesRange: file.batesRange
+                                });
                             });
-                            currentNum += pageCount;
-                        });
-                    }
+                            // Also sync batesState so the preview table
+                            // renders the real Bates values, not the
+                            // predicted ones from the pre-submit preview.
+                            if (batesState.files && batesState.files.length > 0) {
+                                var lookup = {};
+                                zipFiles.forEach(function(f) {
+                                    if (f.fullPath) lookup[f.fullPath] = f;
+                                });
+                                batesState.files.forEach(function(f) {
+                                    var matched = lookup[f.fullPath] || lookup[f.name];
+                                    if (matched) {
+                                        f.batesRange = matched.batesRange;
+                                        f.batesFirst = matched.batesFirst;
+                                        f.batesLast = matched.batesLast;
+                                    }
+                                });
+                            }
+                        } else if (batesState.files && batesState.files.length > 0) {
+                            // Fallback: old server without sidecar — predict
+                            // Bates numbers from the preview's page counts.
+                            var currentNum = startNum;
+                            batesState.files.forEach(function(file) {
+                                var pageCount = file.pageCount || 1;
+                                var firstLabel = RLG.formatBatesLabel(prefix, currentNum, digits);
+                                var lastLabel = RLG.formatBatesLabel(prefix, currentNum + pageCount - 1, digits);
+                                lastBates.files.push({
+                                    name: file.name,
+                                    path: file.fullPath || file.name,
+                                    category: getCategoryFromPath(file.fullPath),
+                                    batesRange: pageCount > 1 ? firstLabel + ' - ' + lastLabel : firstLabel
+                                });
+                                currentNum += pageCount;
+                            });
+                        }
 
-                    // Calculate final number used (currentNum - 1 since we incremented after the last file)
-                    var finalNumUsed = currentNum - 1;
-                    var finalLabel = RLG.formatBatesLabel(prefix, finalNumUsed, digits);
+                        // Calculate final label for display. Prefer the last
+                        // entry of lastBates.files (covers both sidecar and
+                        // prediction paths). Falls back to prediction-only
+                        // formula if lastBates.files is empty.
+                        var finalLabel = '';
+                        if (lastBates.files.length > 0) {
+                            var lastRange = lastBates.files[lastBates.files.length - 1].batesRange || '';
+                            finalLabel = lastRange.indexOf(' - ') !== -1
+                                ? lastRange.split(' - ')[1].trim()
+                                : lastRange.trim();
+                        }
+                        if (!finalLabel) {
+                            var totalPages = 0;
+                            if (batesState.files) {
+                                batesState.files.forEach(function(f) { totalPages += (f.pageCount || 1); });
+                            }
+                            finalLabel = RLG.formatBatesLabel(prefix, startNum + Math.max(totalPages - 1, 0), digits);
+                        }
 
-                    // Display final number under the preview column
-                    $('#bates-final-number')
-                        .html('<strong>Final label used:</strong> ' + finalLabel)
-                        .slideDown(200);
+                        $('#bates-final-number')
+                            .html('<strong>Final label used:</strong> ' + finalLabel)
+                            .slideDown(200);
 
-                    if ($('input[name="index_source"][value="last_bates"]').is(':checked')) {
-                        $('#last-bates-info').html('<span style="color:#047857;">&#10003; Last Bates output ready (' + lastBates.filename + ')</span>');
-                        RLG.updateIndexPreview();
-                    }
+                        if ($('input[name="index_source"][value="last_bates"]').is(':checked')) {
+                            $('#last-bates-info').html('<span style="color:#047857;">&#10003; Last Bates output ready (' + lastBates.filename + ')</span>');
+                            RLG.updateIndexPreview();
+                        }
 
-                    // Generate and show the index preview
-                    RLG.generateBatesIndexPreview();
+                        // Generate and show the index preview
+                        RLG.generateBatesIndexPreview();
 
-                    $status.html('<span class="rlg-status success">Complete! Download started.</span>');
+                        $status.html('<span class="rlg-status success">Complete! Download started.</span>');
+
+                        triggerDownload();
+                    });
                 } else {
                     $status.html('<span class="rlg-status success">Success! Download started.</span>');
+                    triggerDownload();
                 }
-
-                var url = window.URL.createObjectURL(blob);
-                var a = document.createElement('a');
-                a.href = url;
-
-                var filename = serverFilename;
-                if (!filename) {
-                    var ct = result.contentType;
-                    var isPdf = ct.indexOf('application/pdf') !== -1;
-                    var isImage = ct.indexOf('image/png') !== -1 || ct.indexOf('image/jpeg') !== -1;
-                    var ext = isPdf ? '.pdf' : isImage ? (ct.indexOf('png') !== -1 ? '.png' : '.jpg') : '.zip';
-                    if (endpoint === '/unlock') filename = isPdf ? 'unlocked.pdf' : 'unlocked_pdfs.zip';
-                    else if (endpoint === '/organize') filename = 'organized_by_year.zip';
-                    else if (endpoint === '/bates') filename = ext !== '.zip' ? 'bates_labeled' + ext : 'bates_labeled.zip';
-                    else if (endpoint === '/redact') filename = isPdf ? 'redacted_output.pdf' : 'redacted_output.zip';
-                    else if (endpoint === '/index') filename = 'discovery_index.xlsx';
-                    else if (endpoint === '/ocr') filename = isPdf ? 'ocr_output.pdf' : 'ocr_output.zip';
-                    else filename = 'download.zip';
-                }
-                a.download = filename;
-                document.body.appendChild(a);
-                a.click();
-                a.remove();
-                window.URL.revokeObjectURL(url);
-
-                $btn.prop('disabled', false);
             })
             .catch(function(error) {
                 console.error('Error:', error);
