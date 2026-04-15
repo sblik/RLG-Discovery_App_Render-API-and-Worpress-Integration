@@ -83,12 +83,20 @@ def _extract_bare_bates(
     blocks_first: list, blocks_last: list
 ) -> Tuple[Optional[str], Optional[str]]:
     """Detect bare zero-padded Bates numbers (no prefix) from page blocks."""
+    # Bates numbering always starts at >= 1, so reject all-zero matches
+    # that come from OCR noise or body-text artifacts (e.g. "000000").
+    def _iter_valid(blk: str):
+        for m in _BARE_BATES_RE.finditer(blk):
+            num = m.group(1)
+            if int(num) > 0:
+                yield num
+
     bare_1 = []
     for blk in blocks_first:
-        bare_1.extend(m.group(1) for m in _BARE_BATES_RE.finditer(blk))
+        bare_1.extend(_iter_valid(blk))
     bare_N = []
     for blk in blocks_last:
-        bare_N.extend(m.group(1) for m in _BARE_BATES_RE.finditer(blk))
+        bare_N.extend(_iter_valid(blk))
 
     if not bare_1 and not bare_N:
         return None, None

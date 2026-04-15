@@ -305,15 +305,49 @@ async def index_endpoint(
         df = logic.pd.DataFrame(rows)
 
         # Use provided Bates metadata if available, otherwise detect from files
+        def _norm_meta_key(path_like: str) -> str:
+            """Normalize a path for metadata lookup: forward slashes, strip leading ./."""
+            s = str(path_like or "").replace("\\", "/").lstrip("./")
+            return s
+
+        def _row_meta_keys(rel_dir: str, filename: str):
+            """Candidate keys to try when looking up a row in the metadata.
+            Prefer full path (rel_dir/filename) but fall back to bare filename
+            for backwards-compat with older plugin payloads."""
+            filename = str(filename or "")
+            rel_dir = str(rel_dir or "")
+            if rel_dir and rel_dir != ".":
+                yield _norm_meta_key(f"{rel_dir}/{filename}")
+            yield _norm_meta_key(filename)
+
         if bates_metadata:
             try:
                 meta_list = json.loads(bates_metadata)
-                meta_lookup = {item["name"]: item.get("batesRange", "") for item in meta_list}
+                # Build lookup keyed by full path when available, falling back
+                # to bare filename. Collisions on bare filename are resolved
+                # by last-write-wins for old payloads, which is the legacy
+                # behavior — the path-keyed entries are what prevent the
+                # duplicate-filename collision bug.
+                meta_lookup = {}
+                for item in meta_list:
+                    name = item.get("name", "")
+                    full_path = item.get("path") or item.get("fullPath") or ""
+                    bates_range = item.get("batesRange", "") or ""
+                    if full_path:
+                        meta_lookup[_norm_meta_key(full_path)] = bates_range
+                    if name:
+                        # Always keep a filename-only entry as a fallback,
+                        # but don't let it clobber a path-keyed entry.
+                        meta_lookup.setdefault(_norm_meta_key(name), bates_range)
 
                 first_labels = []
                 last_labels = []
                 for _, row in df.iterrows():
-                    bates_range = meta_lookup.get(row["filename"], "")
+                    bates_range = ""
+                    for k in _row_meta_keys(row.get("rel_dir", ""), row.get("filename", "")):
+                        if k in meta_lookup:
+                            bates_range = meta_lookup[k]
+                            break
                     if " - " in bates_range:
                         parts = bates_range.split(" - ", 1)
                         first_labels.append(parts[0].strip())
