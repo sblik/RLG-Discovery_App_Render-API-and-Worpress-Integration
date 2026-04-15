@@ -182,6 +182,107 @@ async def organize_endpoint(
 # -----------------------------------------------------------------------------
 # 3. BATES LABELER
 # -----------------------------------------------------------------------------
+import re as _re_bates
+
+# Matches "PREFIX 000123" or bare "000123" tokens emitted by the detector.
+_BATES_TOKEN_RE = _re_bates.compile(r"^\s*([A-Z][A-Z0-9.]*)?\s*(\d{4,10})\s*$")
+
+
+def _parse_bates_token(tok: str):
+    """Return (prefix, number) parsed from a detected Bates token.
+
+    Detector outputs look like 'TMN 000185' or bare '000185'. Returns
+    (prefix_str, int_number) on success, or (None, None) if the token
+    doesn't match the expected shape.
+    """
+    if not tok:
+        return None, None
+    m = _BATES_TOKEN_RE.match(str(tok))
+    if not m:
+        return None, None
+    pfx = (m.group(1) or "").strip()
+    try:
+        num = int(m.group(2))
+    except (TypeError, ValueError):
+        return None, None
+    return pfx, num
+
+
+def _detect_preexisting_bates(
+    file_pairs: "list", *, user_prefix: str, user_start: int,
+):
+    """Detect pre-labeled files in the input and compute effective numbering.
+
+    Runs `logic.scan_pairs_for_bates` over the input pairs. For each file
+    that comes back with a non-empty label, records a skip_existing entry
+    and tracks the detected prefix + max number. Returns:
+
+        (skip_existing, effective_prefix, effective_start)
+
+    where skip_existing is a dict mapping rel_path -> (first_label, last_label)
+    suitable for `walk_and_label`, and effective_prefix / effective_start
+    are the values to pass to the labeler for the *unlabeled* files
+    (auto-continued from max+1 when any detection succeeded).
+
+    If the input contains no pre-labeled files, skip_existing is empty and
+    the user's prefix/start_num are passed through unchanged.
+    """
+    try:
+        det = logic.scan_pairs_for_bates(file_pairs)
+    except Exception:
+        logger.exception("Bates pre-pass detection failed; falling back to full stamping")
+        return {}, user_prefix, user_start
+
+    skip_existing = {}
+    detected_prefixes = []
+    max_detected = 0
+
+    if det is None or det.empty:
+        return {}, user_prefix, user_start
+
+    for _, row in det.iterrows():
+        first = (row.get("first_label", "") or "").strip()
+        last = (row.get("last_label", "") or first).strip()
+        if not first:
+            continue
+        rel_dir = (row.get("rel_dir", "") or "").replace("\\", "/").strip("/")
+        fname = row.get("filename", "") or ""
+        key = f"{rel_dir}/{fname}" if rel_dir and rel_dir != "." else fname
+        skip_existing[key] = (first, last)
+
+        pfx_f, num_f = _parse_bates_token(first)
+        pfx_l, num_l = _parse_bates_token(last)
+        if pfx_f is not None:
+            detected_prefixes.append(pfx_f)
+        if pfx_l is not None:
+            detected_prefixes.append(pfx_l)
+        if num_l is not None:
+            max_detected = max(max_detected, num_l)
+        elif num_f is not None:
+            max_detected = max(max_detected, num_f)
+
+    if not skip_existing:
+        return {}, user_prefix, user_start
+
+    # Pick dominant prefix (most common). Empty string is a valid "bare
+    # numbering" prefix.
+    from collections import Counter
+    prefix_counts = Counter(detected_prefixes)
+    dominant_prefix = ""
+    if prefix_counts:
+        dominant_prefix = prefix_counts.most_common(1)[0][0]
+
+    effective_start = max_detected + 1 if max_detected > 0 else user_start
+    effective_prefix = dominant_prefix
+
+    logger.info(
+        "Bates pre-pass: %d file(s) already labeled, detected prefix=%r, "
+        "auto-continuing new stamps at %d",
+        len(skip_existing), effective_prefix, effective_start,
+    )
+    return skip_existing, effective_prefix, effective_start
+
+
 @app.post("/bates")
 async def bates_endpoint(
     files: List[UploadFile] = File(...),
@@ -222,12 +323,21 @@ async def bates_endpoint(
 
     logger.info("Bates request: %d file(s)", len(file_pairs))
 
+    # Smart pre-pass: detect files that already carry a Bates label so
+    # /bates can pass them through unchanged instead of double-stamping.
+    # When any file is detected, auto-continue numbering from the detected
+    # max using the detected prefix — the user's start_num/prefix form
+    # fields are only used when no pre-labels are found (fresh production).
+    skip_existing, effective_prefix, effective_start = _detect_preexisting_bates(
+        file_pairs, user_prefix=prefix, user_start=start_num,
+    )
+
     try:
         records, last_used, zip_bytes = await asyncio.to_thread(
             logic.walk_and_label,
             file_pairs,
-            prefix=prefix,
-            start_num=start_num,
+            prefix=effective_prefix,
+            start_num=effective_start,
             digits=digits,
             font_name=font_name,
             font_size=font_size,
@@ -239,6 +349,7 @@ async def bates_endpoint(
             left_punch_margin=left_punch_margin,
             border_all_pt=border_all_pt,
             diagnostics=diagnostics,
+            skip_existing=skip_existing,
         )
 
         single = _maybe_unwrap_single_file(zip_bytes)
