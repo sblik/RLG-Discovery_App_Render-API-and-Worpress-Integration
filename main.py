@@ -586,7 +586,7 @@ async def index_endpoint(
         return StreamingResponse(
             io.BytesIO(xlsx_bytes),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": f'attachment; filename="{_output_name(files, "_index", ".xlsx")}"'}
+            headers={"Content-Disposition": f'attachment; filename="{_output_name([file], "_index", ".xlsx")}"'}
         )
 
     except Exception as e:

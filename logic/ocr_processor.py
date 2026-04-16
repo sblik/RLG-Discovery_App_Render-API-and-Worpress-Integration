@@ -236,7 +236,8 @@ def ocr_tiff_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
         del frame_np
 
         if words_list and words_list[0]:
-            _insert_ocr_text_layer(page, words_list[0], img_rect)
+            _insert_ocr_text_layer(page, words_list[0], img_rect
+           )
 
     del im
 
