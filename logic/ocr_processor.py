@@ -30,15 +30,17 @@ logger = logging.getLogger(__name__)
 OCR_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".tif", ".tiff"}
 
 
-def _insert_ocr_text_layer(page: "fitz.Page", words: list) -> None:
+def _insert_ocr_text_layer(page: "fitz.Page", words: list, img_rect=None) -> None:
     """Insert invisible OCR text onto a fitz page."""
     if not words:
         return
-    pw = page.rect.width
-    ph = page.rect.height
+    rect = img_rect or page.rect
+    pw = rect.width
+    ph = rect.height
+    ox, oy = rect.x0, rect.y0
     for w in words:
-        x0, y0 = w.xmin * pw, w.ymin * ph
-        x1, y1 = w.xmax * pw, w.ymax * ph
+        x0, y0 = ox + w.xmin * pw, oy + w.ymin * ph
+        x1, y1 = ox + w.xmax * pw, oy + w.ymax * ph
         target_w = x1 - x0
         target_h = y1 - y0
         if target_w <= 0 or target_h <= 0 or not w.text:
@@ -131,6 +133,13 @@ def ocr_image_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
     width_pt = im.width * 72.0 / dpi
     height_pt = im.height * 72.0 / dpi
 
+    # Define the target PDF size
+    letter_w = 612.0
+    letter_h = 792.0
+
+    # Fit image inside the letter page
+    scale = min(letter_w / width_pt, letter_h / height_pt, 1.0)
+
     # Re-encode to JPEG (EXIF transpose may have rotated)
     jpeg_buf = io.BytesIO()
     im.save(jpeg_buf, format="JPEG", quality=85)
@@ -142,8 +151,13 @@ def ocr_image_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
 
     # Build PDF page with the image
     doc = fitz.open()
-    page = doc.new_page(width=width_pt, height=height_pt)
-    page.insert_image(page.rect, stream=jpeg_bytes)
+    page = doc.new_page(width=letter_w, height=letter_h)
+    scaled_w = width_pt * scale
+    scaled_h = height_pt * scale
+    x_offset = (letter_w - scaled_w) / 2
+    y_offset = (letter_h - scaled_h) / 2
+    img_rect = fitz.Rect(x_offset, y_offset, x_offset + scaled_w, y_offset + scaled_h)
+    page.insert_image(img_rect, stream=jpeg_bytes)
     del jpeg_bytes
 
     # Run OCR and insert text layer
@@ -151,7 +165,7 @@ def ocr_image_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
     del page_img
 
     if words_list and words_list[0]:
-        _insert_ocr_text_layer(page, words_list[0])
+        _insert_ocr_text_layer(page, words_list[0], img_rect)
 
     out = doc.tobytes()
     doc.close()
@@ -191,6 +205,13 @@ def ocr_tiff_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
         width_pt = frame.width * 72.0 / dpi
         height_pt = frame.height * 72.0 / dpi
 
+        # Define the target PDF size
+        letter_w = 612.0
+        letter_h = 792.0
+
+        # Fit image inside the letter page
+        scale = min(letter_w / width_pt, letter_h / height_pt, 1.0)
+
         # Re-encode frame to JPEG
         jpeg_buf = io.BytesIO()
         frame.save(jpeg_buf, format="JPEG", quality=85)
@@ -201,8 +222,13 @@ def ocr_tiff_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
         del frame
 
         # Add page with embedded image
-        page = doc.new_page(width=width_pt, height=height_pt)
-        page.insert_image(page.rect, stream=jpeg_bytes)
+        page = doc.new_page(width=letter_w, height=letter_h)
+        scaled_w = width_pt * scale
+        scaled_h = height_pt * scale
+        x_offset = (letter_w - scaled_w) / 2
+        y_offset = (letter_h - scaled_h) / 2
+        img_rect = fitz.Rect(x_offset, y_offset, x_offset + scaled_w, y_offset + scaled_h)
+        page.insert_image(img_rect, stream=jpeg_bytes)
         del jpeg_bytes
 
         # Run OCR and insert text layer
@@ -210,7 +236,7 @@ def ocr_tiff_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
         del frame_np
 
         if words_list and words_list[0]:
-            _insert_ocr_text_layer(page, words_list[0])
+            _insert_ocr_text_layer(page, words_list[0], img_rect)
 
     del im
 
