@@ -53,6 +53,19 @@ _SINGLE_FILE_TYPES = {
 OCR_CONCURRENCY = int(os.environ.get("OCR_CONCURRENCY", "1"))
 _ocr_semaphore = asyncio.Semaphore(OCR_CONCURRENCY)
 
+def _output_name(files: list, suffix: str, ext: str = ".zip") -> str:
+    """Build a download filename from the first uploaded file's name + a tool suffix.
+
+    Examples:
+        _output_name(files, "_LABELED")        -> "Case_Documents_LABELED.zip"
+        _output_name(files, "_index", ".xlsx")  -> "Case_Documents_index.xlsx"
+    """
+    from pathlib import PurePosixPath
+    raw = files[0].filename if files else ""
+    stem = PurePosixPath(raw).stem or "output"
+    return f"{stem}{suffix}{ext}"
+
+
 def _maybe_unwrap_single_file(zip_bytes: bytes):
     """If ZIP contains one supported file, return (bytes, filename, media_type). Otherwise None."""
     with zipfile.ZipFile(io.BytesIO(zip_bytes)) as zf:
@@ -127,18 +140,19 @@ async def unlock_pdfs_endpoint(
         single = _maybe_unwrap_single_file(result_zip)
         if single:
             file_bytes, file_name, media = single
+            out_name = _output_name(files, "_unlocked", "." + file_name.rsplit(".", 1)[-1])
             return StreamingResponse(
                 io.BytesIO(file_bytes),
                 media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{file_name}"'
+                    "Content-Disposition": f'attachment; filename="{out_name}"'
                 }
             )
 
         return StreamingResponse(
             io.BytesIO(result_zip),
             media_type="application/zip",
-            headers={"Content-Disposition": "attachment; filename=unlocked_pdfs.zip"}
+            headers={"Content-Disposition": f'attachment; filename="{_output_name(files, "_unlocked")}"'}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -174,7 +188,7 @@ async def organize_endpoint(
         return StreamingResponse(
             io.BytesIO(result_zip),
             media_type="application/zip",
-            headers={"Content-Disposition": "attachment; filename=organized_by_year.zip"}
+            headers={"Content-Disposition": f'attachment; filename="{_output_name(files, "_organized")}"'}
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -355,11 +369,12 @@ async def bates_endpoint(
         single = _maybe_unwrap_single_file(zip_bytes)
         if single:
             file_bytes, file_name, media = single
+            out_name = _output_name(files, "_LABELED", "." + file_name.rsplit(".", 1)[-1])
             return StreamingResponse(
                 io.BytesIO(file_bytes),
                 media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{file_name}"',
+                    "Content-Disposition": f'attachment; filename="{out_name}"',
                     "X-Last-Bates-Number": str(last_used)
                 }
             )
@@ -368,7 +383,7 @@ async def bates_endpoint(
             io.BytesIO(zip_bytes),
             media_type="application/zip",
             headers={
-                "Content-Disposition": "attachment; filename=bates_labeled.zip",
+                "Content-Disposition": f'attachment; filename="{_output_name(files, "_LABELED")}"',
                 "X-Last-Bates-Number": str(last_used)
             }
         )
@@ -571,7 +586,7 @@ async def index_endpoint(
         return StreamingResponse(
             io.BytesIO(xlsx_bytes),
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            headers={"Content-Disposition": "attachment; filename=discovery.xlsx"}
+            headers={"Content-Disposition": f'attachment; filename="{_output_name(files, "_index", ".xlsx")}"'}
         )
 
     except Exception as e:
@@ -627,11 +642,12 @@ async def redact_endpoint(
         single = _maybe_unwrap_single_file(out_zip)
         if single:
             file_bytes, file_name, media = single
+            out_name = _output_name([file], "_redacted", "." + file_name.rsplit(".", 1)[-1])
             return StreamingResponse(
                 io.BytesIO(file_bytes),
                 media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{file_name}"',
+                    "Content-Disposition": f'attachment; filename="{out_name}"',
                     "X-Total-Hits": str(summary["total_hits"])
                 }
             )
@@ -640,7 +656,7 @@ async def redact_endpoint(
             io.BytesIO(out_zip),
             media_type="application/zip",
             headers={
-                "Content-Disposition": "attachment; filename=redacted_output.zip",
+                "Content-Disposition": f'attachment; filename="{_output_name([file], "_redacted")}"',
                 "X-Total-Hits": str(summary["total_hits"])
             }
         )
@@ -680,11 +696,12 @@ async def ocr_endpoint(
             name, data = result_pairs[0]
             ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
             media = _SINGLE_FILE_TYPES.get(f".{ext}", "application/octet-stream")
+            out_name = _output_name(files, "_searchable", "." + name.rsplit(".", 1)[-1])
             return Response(
                 content=data,
                 media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{name}"',
+                    "Content-Disposition": f'attachment; filename="{out_name}"',
                     "Content-Length": str(len(data)),
                 }
             )
@@ -700,7 +717,7 @@ async def ocr_endpoint(
             content=zip_bytes,
             media_type="application/zip",
             headers={
-                "Content-Disposition": "attachment; filename=ocr_output.zip",
+                "Content-Disposition": f'attachment; filename="{_output_name(files, "_searchable")}"',
                 "Content-Length": str(len(zip_bytes)),
             }
         )
