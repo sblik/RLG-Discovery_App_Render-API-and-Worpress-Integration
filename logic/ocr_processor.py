@@ -137,8 +137,8 @@ def ocr_image_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
     letter_w = 612.0
     letter_h = 792.0
 
-    # Fit image inside the letter page
-    scale = min(letter_w / width_pt, letter_h / height_pt, 1.0)
+    # Fit image inside the letter page (scale up or down as needed)
+    scale = min(letter_w / width_pt, letter_h / height_pt)
 
     # Re-encode to JPEG (EXIF transpose may have rotated)
     jpeg_buf = io.BytesIO()
@@ -209,8 +209,8 @@ def ocr_tiff_bytes(img_bytes: bytes, dpi: int = OCR_DPI) -> bytes:
         letter_w = 612.0
         letter_h = 792.0
 
-        # Fit image inside the letter page
-        scale = min(letter_w / width_pt, letter_h / height_pt, 1.0)
+        # Fit image inside the letter page (scale up or down as needed)
+        scale = min(letter_w / width_pt, letter_h / height_pt)
 
         # Re-encode frame to JPEG
         jpeg_buf = io.BytesIO()
