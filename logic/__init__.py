@@ -140,6 +140,8 @@ from .ocr_processor import (
     ocr_image_bytes,
     ocr_tiff_bytes,
     process_ocr_zip_bytes,
+    process_file_pairs,
+    LabelSpec,
     OCR_IMAGE_EXTS,
 )
 
@@ -221,4 +223,6 @@ __all__ = [
     "ocr_tiff_bytes",
     "OCR_IMAGE_EXTS",
     "process_ocr_zip_bytes",
+    "process_file_pairs",
+    "LabelSpec",
 ]

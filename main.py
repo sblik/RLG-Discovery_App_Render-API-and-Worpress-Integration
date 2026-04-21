@@ -727,22 +727,11 @@ async def ocr_endpoint(
 
 
 def _ocr_file_pairs(file_pairs: list) -> list:
-    """Process file pairs directly, calling the appropriate OCR function per file."""
-    from pathlib import Path
-    results = []
-    for fname, data in file_pairs:
-        ext = Path(fname).suffix.lower()
-        out_name = fname
-        if ext == ".pdf":
-            data = logic.ocr_pdf_bytes(data)
-        elif ext in logic.OCR_IMAGE_EXTS:
-            try:
-                if ext in (".tif", ".tiff"):
-                    data = logic.ocr_tiff_bytes(data)
-                else:
-                    data = logic.ocr_image_bytes(data)
-                out_name = str(Path(fname).with_suffix(".pdf"))
-            except Exception:
-                logger.warning("Failed to OCR image %s, passing through", fname)
-        results.append((out_name, data))
-    return results
+    """Process file pairs through OCR with sidecar-aware gap-fill.
+
+    If the input contains a ``__bates_records.json`` sidecar, gap-fill mode
+    activates: files missing from the sidecar get labeled with continued
+    numbering, sidecar-listed image labels are redrawn as native PDF text,
+    and an updated sidecar is emitted. Otherwise OCR runs plain.
+    """
+    return logic.process_file_pairs(file_pairs)
