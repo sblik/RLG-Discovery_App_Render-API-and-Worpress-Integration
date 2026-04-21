@@ -218,6 +218,55 @@
      * @param {ArrayBuffer} zipData - ZIP file data
      * @param {Function} progressCallback - Called with (files, isDone) to update UI
      */
+    /**
+     * Normalize a zip path to forward-slash, no leading './'.
+     */
+    function normZipPath(p) {
+        return String(p || '').replace(/\\/g, '/').replace(/^\.\//, '');
+    }
+
+    /**
+     * Read __bates_records.json from the zip (if present) and return a
+     * path-keyed lookup of { first_label, last_label }. Returns {} if no
+     * sidecar or parse error — caller falls back to per-file detection.
+     */
+    async function loadSidecarLookup(zip) {
+        var lookup = {};
+        var sidecarEntry = null;
+        for (var filename in zip.files) {
+            var base = normZipPath(filename).split('/').pop();
+            if (base === '__bates_records.json') {
+                sidecarEntry = zip.files[filename];
+                break;
+            }
+        }
+        if (!sidecarEntry) return lookup;
+        try {
+            var text = await sidecarEntry.async('string');
+            var records = JSON.parse(text);
+            if (!Array.isArray(records)) return lookup;
+            records.forEach(function(rec) {
+                if (!rec || typeof rec !== 'object') return;
+                var path = rec.path;
+                if (!path) {
+                    var relDir = rec.rel_dir || '';
+                    var fname = rec.filename || '';
+                    path = relDir ? (relDir + '/' + fname) : fname;
+                }
+                var key = normZipPath(path);
+                if (key) {
+                    lookup[key] = {
+                        first_label: String(rec.first_label || '').trim(),
+                        last_label: String(rec.last_label || rec.first_label || '').trim()
+                    };
+                }
+            });
+        } catch (e) {
+            console.warn('Failed to parse __bates_records.json:', e);
+        }
+        return lookup;
+    }
+
     RLG.processIndexZipWithBatesDetection = async function(zipData, progressCallback) {
         if (typeof JSZip === 'undefined') {
             console.error('JSZip not loaded');
@@ -227,6 +276,12 @@
 
         try {
             var zip = await JSZip.loadAsync(zipData);
+
+            // Priority order matches server-side /index:
+            //   1. Sidecar (__bates_records.json) — authoritative
+            //   2. Per-file PDF text detection — fallback
+            var sidecarLookup = await loadSidecarLookup(zip);
+
             var pdfEntries = [];
 
             // Collect PDF entries
@@ -293,20 +348,34 @@
                     var file = files[myIndex];
 
                     try {
-                        var data = await entry.entry.async('arraybuffer');
-                        var detection = await RLG.detectBatesFromPdf(data);
+                        // Sidecar wins — authoritative labels from /bates
+                        // or /ocr gap-fill. Skip PDF text extraction when
+                        // a sidecar entry exists.
+                        var sidecarHit = sidecarLookup[normZipPath(entry.filename)];
 
-                        file.pageCount = detection.pageCount;
-                        file.isLoading = false;
-
-                        if (detection.first && detection.last) {
-                            if (detection.first === detection.last) {
-                                file.batesRange = detection.first;
+                        if (sidecarHit && sidecarHit.first_label) {
+                            file.isLoading = false;
+                            if (sidecarHit.first_label === sidecarHit.last_label) {
+                                file.batesRange = sidecarHit.first_label;
                             } else {
-                                file.batesRange = detection.first + ' - ' + detection.last;
+                                file.batesRange = sidecarHit.first_label + ' - ' + sidecarHit.last_label;
                             }
                         } else {
-                            file.batesRange = 'Not detected';
+                            var data = await entry.entry.async('arraybuffer');
+                            var detection = await RLG.detectBatesFromPdf(data);
+
+                            file.pageCount = detection.pageCount;
+                            file.isLoading = false;
+
+                            if (detection.first && detection.last) {
+                                if (detection.first === detection.last) {
+                                    file.batesRange = detection.first;
+                                } else {
+                                    file.batesRange = detection.first + ' - ' + detection.last;
+                                }
+                            } else {
+                                file.batesRange = 'Not detected';
+                            }
                         }
 
                     } catch (error) {
