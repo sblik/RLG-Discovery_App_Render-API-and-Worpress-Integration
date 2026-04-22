@@ -123,6 +123,45 @@ def _overlay_pdf(
     return packet.getvalue()
 
 
+def _image_to_letter_pdf_bytes(src: Path) -> bytes:
+    """Convert an image file to a single-page 8.5x11 PDF with the image
+    centered and scaled to fit (aspect preserved). Mirrors the sizing
+    behavior of the /ocr image-to-PDF path so image outputs of /bates and
+    /ocr are dimensionally consistent.
+    """
+    import fitz  # PyMuPDF
+
+    im = Image.open(src)
+    im = ImageOps.exif_transpose(im)
+    if im.mode != "RGB":
+        im = im.convert("RGB")
+
+    dpi = _pil_dpi(im)
+    width_pt = im.width * 72.0 / dpi
+    height_pt = im.height * 72.0 / dpi
+
+    letter_w, letter_h = 612.0, 792.0
+    scale = min(letter_w / width_pt, letter_h / height_pt)
+    scaled_w = width_pt * scale
+    scaled_h = height_pt * scale
+    x_offset = (letter_w - scaled_w) / 2
+    y_offset = (letter_h - scaled_h) / 2
+
+    jpeg_buf = io.BytesIO()
+    im.save(jpeg_buf, format="JPEG", quality=92)
+    jpeg_bytes = jpeg_buf.getvalue()
+
+    doc = fitz.open()
+    page = doc.new_page(width=letter_w, height=letter_h)
+    page.insert_image(
+        fitz.Rect(x_offset, y_offset, x_offset + scaled_w, y_offset + scaled_h),
+        stream=jpeg_bytes,
+    )
+    out = doc.tobytes()
+    doc.close()
+    return out
+
+
 def _label_image(
     in_file: Path, out_file: Path, label: str,
     font_name: str, font_size_pt: int,
@@ -131,7 +170,8 @@ def _label_image(
     left_punch_margin_pt: float = 0.0,
     border_all_pt: float = 0.0,
 ):
-    """Apply a Bates label to an image file."""
+    """Apply a Bates label to an image file (legacy native-size path;
+    retained for the preserve/skip flow and any future native-sized uses)."""
     img = Image.open(in_file)
     img = ImageOps.exif_transpose(img)
 
@@ -398,14 +438,13 @@ def walk_and_label(
                         eff_mr = max(mr, border_all_pt or 0.0)
                         eff_mb = max(mb, border_all_pt or 0.0)
 
-                        if zone and zone.startswith("Bottom Left"):
-                            label_x = crop_x1 + eff_mr
-                        elif zone and zone.startswith("Bottom Center"):
-                            tw, _ = _measure_text_px(label, font_name, font_size)
-                            label_x = crop_x1 + (visible_w + tw) / 2.0
-                        else:
-                            label_x = crop_x2 - eff_mr
-
+                        # _compute_margins_for_page returns `mr` as a
+                        # distance from the right edge in all zones (for
+                        # Bottom Left it encodes visible_w - pad - tw).
+                        # drawRightString wants the right edge of the text,
+                        # so label_x = crop_x2 - mr is the universal formula
+                        # across zones.
+                        label_x = crop_x2 - eff_mr
                         label_y = crop_y1 + eff_mb
 
                         overlay_margin = left_punch_margin if left_punch_margin and left_punch_margin > 0 else 0
@@ -494,31 +533,58 @@ def walk_and_label(
 
                 first = current
 
+                # Image inputs are rendered onto an 8.5x11 page (aspect
+                # preserved, centered) and stamped through the same PDF
+                # overlay path as PDFs. Output filename becomes <stem>.pdf.
+                out_pdf = out_dir / (Path(fname).stem + ".pdf")
+
                 try:
+                    if not PIKEPDF_AVAILABLE:
+                        raise RuntimeError("pikepdf is required for Bates labeling")
+
                     label = _format_label(prefix, current, digits, with_space=True)
+
+                    letter_pdf_bytes = _image_to_letter_pdf_bytes(src)
+
+                    w, h = 612.0, 792.0
 
                     mr, mb = margin_right, margin_bottom
                     if zone:
-                        with Image.open(io.BytesIO(src.read_bytes())) as tmp_img:
-                            tmp_img = ImageOps.exif_transpose(tmp_img)
-                            dpi = _pil_dpi(tmp_img)
-                            px_per_pt = dpi / 72.0
-                            w_pt = tmp_img.width / px_per_pt
-                            h_pt = tmp_img.height / px_per_pt
+                        mr, mb = _compute_margins_for_page(
+                            zone, w, h, label, font_name, font_size, zone_padding, border_all_pt
+                        )
 
-                            mr, mb = _compute_margins_for_page(
-                                zone, w_pt, h_pt, label, font_name, font_size, zone_padding, border_all_pt
-                            )
+                    eff_mr = max(mr, border_all_pt or 0.0)
+                    eff_mb = max(mb, border_all_pt or 0.0)
 
-                    _label_image(
-                        src, out, label, font_name, font_size,
-                        mr, mb, color_rgb,
-                        left_punch_margin, border_all_pt
+                    # _compute_margins_for_page returns `mr` as a distance
+                    # from the right edge in all zones (for Bottom Left it
+                    # encodes the left inset as w - pad - tw). drawRightString
+                    # wants the right edge of the text, so label_x = w - mr
+                    # is the universal formula across zones.
+                    label_x = w - eff_mr
+                    label_y = eff_mb
+
+                    overlay_margin = left_punch_margin if left_punch_margin and left_punch_margin > 0 else 0
+
+                    overlay_bytes = _overlay_pdf(
+                        label, w, h, font_name, font_size,
+                        label_x, label_y, color_rgb,
+                        overlay_margin, border_all_pt
                     )
+
+                    pdf = pikepdf.open(io.BytesIO(letter_pdf_bytes))
+                    overlay_pdf = pikepdf.open(io.BytesIO(overlay_bytes))
+                    dest_page = PikePage(pdf.pages[0])
+                    dest_page.add_overlay(overlay_pdf.pages[0], PikeRectangle(0, 0, w, h))
+                    pdf.save(str(out_pdf))
+                    pdf.close()
+                    overlay_pdf.close()
+
                     current += 1
                     files_done += 1
-                    logger.info("Bates labeled image %d/%d: %s",
-                                files_done, staged_count, fname)
+                    logger.info("Bates labeled image %d/%d: %s -> %s",
+                                files_done, staged_count, fname, out_pdf.name)
                 except Exception:
                     logger.exception("Failed to label image: %s", fname)
                     continue
@@ -528,7 +594,7 @@ def walk_and_label(
 
                 records.append(BatesRecord(
                     rel_dir=rel_dir,
-                    filename=fname,
+                    filename=out_pdf.name,
                     pages_or_files=1,
                     first_label=_format_label(prefix, first, digits, with_space=True),
                     last_label=_format_label(prefix, last, digits, with_space=True),
