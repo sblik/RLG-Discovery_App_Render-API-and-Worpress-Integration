@@ -65,6 +65,24 @@ def _zip_dir(dir_path: Path) -> bytes:
     return buf.read()
 
 
+def _zip_dir_to_path(dir_path: Path, *, suffix: str = ".zip") -> Path:
+    """Like `_zip_dir`, but stream the archive to a tempfile on disk.
+
+    Returns the path to the (closed) tempfile. The caller is responsible
+    for deleting it. Used by endpoints that build large output zips so
+    the entire archive never sits in RAM while the response streams.
+    """
+    import tempfile
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix, prefix="zipdir_")
+    os.close(fd)
+    out = Path(tmp_path)
+    with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+        for p in dir_path.rglob("*"):
+            if p.is_file():
+                zf.write(p, p.relative_to(dir_path))
+    return out
+
+
 def _zip_from_pairs(pairs: List[Tuple[str, bytes]]) -> bytes:
     """Create a ZIP archive from a list of (relative_path, bytes) pairs."""
     buf = io.BytesIO()

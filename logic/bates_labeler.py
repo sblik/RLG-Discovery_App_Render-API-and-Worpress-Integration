@@ -36,6 +36,7 @@ from .utils import (
     _pil_dpi,
     _is_mac_resource_junk,
     _zip_dir,
+    _zip_dir_to_path,
 )
 
 # Optional: pikepdf for PDF manipulation
@@ -285,7 +286,7 @@ def walk_and_label(
     border_all_pt: float = 0.0,
     diagnostics: bool = False,
     skip_existing: Optional[Dict[str, Tuple[str, str]]] = None,
-) -> Tuple[List[BatesRecord], int, bytes]:
+) -> Tuple[List[BatesRecord], int, Path]:
     """
     Apply Bates labels to PDFs and images.
 
@@ -312,7 +313,11 @@ def walk_and_label(
             the sidecar captures them alongside freshly-stamped files.
 
     Returns:
-        Tuple of (records, last_used_number, zip_bytes)
+        Tuple of (records, last_used_number, zip_path).
+
+        `zip_path` points to a tempfile on disk that survives the
+        staging-dir teardown — caller is responsible for deleting it
+        once the response has been streamed.
     """
     skip_map = skip_existing or {}
     logger = logging.getLogger(__name__)
@@ -625,6 +630,9 @@ def walk_and_label(
             encoding="utf-8",
         )
 
-        zip_bytes = _zip_dir(output)
+        # Stream the archive straight to a tempfile on disk so the entire
+        # output zip never sits in RAM. Path lives outside the staging
+        # tempdir context so it survives function return.
+        zip_path = _zip_dir_to_path(output, suffix="_LABELED.zip")
 
-    return records, current - 1, zip_bytes
+    return records, current - 1, zip_path
