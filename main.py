@@ -78,6 +78,21 @@ def _maybe_unwrap_single_file(zip_bytes: bytes):
                 return zf.read(entries[0]), name, media_type
     return None
 
+
+def _maybe_unwrap_single_file_path(zip_path):
+    """Path-based variant: opens the zip from disk and only materializes
+    bytes for the one entry (if there is one supported entry)."""
+    from pathlib import Path as _P
+    with zipfile.ZipFile(str(zip_path)) as zf:
+        entries = [i for i in zf.infolist() if not i.is_dir()]
+        if len(entries) == 1:
+            ext = entries[0].filename.rsplit(".", 1)[-1].lower() if "." in entries[0].filename else ""
+            media_type = _SINGLE_FILE_TYPES.get(f".{ext}")
+            if media_type:
+                name = entries[0].filename.split('/')[-1]
+                return zf.read(entries[0]), name, media_type
+    return None
+
 @app.get("/")
 def home():
     return {
@@ -347,7 +362,7 @@ async def bates_endpoint(
     )
 
     try:
-        records, last_used, zip_bytes = await asyncio.to_thread(
+        records, last_used, zip_path = await asyncio.to_thread(
             logic.walk_and_label,
             file_pairs,
             prefix=effective_prefix,
@@ -366,7 +381,18 @@ async def bates_endpoint(
             skip_existing=skip_existing,
         )
 
-        single = _maybe_unwrap_single_file(zip_bytes)
+        from fastapi.responses import FileResponse
+        from starlette.background import BackgroundTask
+
+        def _cleanup(p):
+            try:
+                os.unlink(p)
+            except Exception:
+                logger.exception("Failed to delete temp zip: %s", p)
+
+        cleanup_task = BackgroundTask(_cleanup, str(zip_path))
+
+        single = _maybe_unwrap_single_file_path(zip_path)
         if single:
             file_bytes, file_name, media = single
             out_name = _output_name(files, "_LABELED", "." + file_name.rsplit(".", 1)[-1])
@@ -376,16 +402,16 @@ async def bates_endpoint(
                 headers={
                     "Content-Disposition": f'attachment; filename="{out_name}"',
                     "X-Last-Bates-Number": str(last_used)
-                }
+                },
+                background=cleanup_task,
             )
 
-        return StreamingResponse(
-            io.BytesIO(zip_bytes),
+        return FileResponse(
+            str(zip_path),
             media_type="application/zip",
-            headers={
-                "Content-Disposition": f'attachment; filename="{_output_name(files, "_LABELED")}"',
-                "X-Last-Bates-Number": str(last_used)
-            }
+            filename=_output_name(files, "_LABELED"),
+            headers={"X-Last-Bates-Number": str(last_used)},
+            background=cleanup_task,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
