@@ -225,7 +225,7 @@
 
                         var batesFailedN = parseInt(result.bates_failed, 10) || 0;
                         if (batesFailedN > 0) {
-                            $status.html('<span class="rlg-status success">Complete – but ' + batesFailedN + ' file(s) could not be labeled and were left out. Download started.</span>');
+                            $status.html('<span class="rlg-status success">Done. ' + batesFailedN + ' file(s) couldn\'t be labeled.</span>');
                         } else {
                             $status.html('<span class="rlg-status success">Complete! Download started.</span>');
                         }
@@ -235,9 +235,9 @@
                     var failedN = parseInt(result.unlock_count, 10) || 0;
                     var ocrFailedN = parseInt(result.ocr_failed, 10) || 0;
                     if (endpoint === '/unlock' && failedN > 0) {
-                        $status.html('<span class="rlg-status success">Done – but ' + failedN + ' file(s) could not be unlocked (wrong password or corrupt).</span>');
+                        $status.html('<span class="rlg-status success">Done. ' + failedN + ' file(s) couldn\'t be unlocked.</span>');
                     } else if (endpoint ==='/ocr' && ocrFailedN > 0) {
-                        $status.html('<span class="rlg-status success">Done – but ' + ocrFailedN + ' file(s) could not be made searchable and were left as-is.</span>');
+                        $status.html('<span class="rlg-status success">Done. ' + ocrFailedN + ' file(s) couldn\'t be made searchable.</span>');
                     } else {
                         $status.html('<span class="rlg-status success">Success! Download started.</span>');
                     }
