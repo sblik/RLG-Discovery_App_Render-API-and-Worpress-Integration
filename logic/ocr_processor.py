@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import fitz  # PyMuPDFScreenshot 2026-04-21 at 11.54.08 AMScreenshot 2026-04-21 at 11.54.08 AM
+import fitz  # PyMuPDF
 import numpy as np
 from PIL import Image, ImageOps
 
@@ -488,6 +488,7 @@ def _ocr_one(
     label: Optional[str] = None,
     labels: Optional[List[str]] = None,
     label_spec: Optional[LabelSpec] = None,
+    failed: Optional[List[str]] = None,
 ) -> Tuple[str, bytes]:
     """OCR a single file (PDF or image), optionally drawing a Bates label.
 
@@ -497,8 +498,15 @@ def _ocr_one(
     """
     ext = Path(fname).suffix.lower()
     if ext == ".pdf":
-        out_data = ocr_pdf_bytes(data, labels=labels, label_spec=label_spec)
-        return fname, out_data
+        try:
+            out_data = ocr_pdf_bytes(data, labels=labels, label_spec=label_spec)
+            return fname, out_data
+        except Exception:
+            logger.warning("Failed to OCR PDF %s, passing through", fname)
+            if failed is not None:
+                failed.append(fname)
+            return fname, data
+
     if ext in OCR_IMAGE_EXTS:
         out_name = str(Path(fname).with_suffix(".pdf"))
         try:
@@ -509,13 +517,15 @@ def _ocr_one(
             return out_name, out_data
         except Exception:
             logger.warning("Failed to OCR image %s, passing through", fname)
+            if failed is not None:
+                failed.append(fname)
             return fname, data
     return fname, data
 
 
 def process_file_pairs(
     file_pairs: List[Tuple[str, bytes]],
-) -> List[Tuple[str, bytes]]:
+) -> Tuple[List[Tuple[str, bytes]], List[str]]:
     """OCR every file. If a Bates sidecar is present in the input, activate
     gap-fill mode: label files missing from the sidecar with continued
     numbering, redraw sidecar-listed image labels as native PDF text so
@@ -523,11 +533,13 @@ def process_file_pairs(
 
     Returns a new list of (out_name, out_bytes) pairs ready to be zipped.
     """
+    failed: List[str] = []
     sidecar_records, pairs = _extract_sidecar_from_pairs(file_pairs)
 
     # Plain OCR mode — no sidecar, no labeling
     if sidecar_records is None:
-        return [_ocr_one(name, data) for name, data in pairs]
+        results = [_ocr_one(name, data, failed=failed) for name, data in pairs]
+        return results, failed
 
     # Gap-fill mode
     sidecar_lookup = _build_sidecar_lookup(sidecar_records)
@@ -558,7 +570,7 @@ def process_file_pairs(
 
             if ext == ".pdf":
                 # Pre-labeled PDF — OCR text-less pages, leave stamp alone.
-                out_name, out_data = _ocr_one(name, data)
+                out_name, out_data = _ocr_one(name, data, failed=failed)
                 updated_records.append(sidecar_entry)
                 results.append((out_name, out_data))
                 continue
@@ -568,7 +580,7 @@ def process_file_pairs(
                 # OCR'd, so redraw the sidecar's authoritative label as
                 # native PDF text. /index reads that cleanly.
                 out_name, out_data = _ocr_one(
-                    name, data, label=first_label, label_spec=spec,
+                    name, data, label=first_label, label_spec=spec, failed=failed
                 )
                 updated_records.append(_rekey_record_for_ext_change(sidecar_entry, out_name))
                 results.append((out_name, out_data))
@@ -589,7 +601,7 @@ def process_file_pairs(
             first_label = labels[0] if labels else ""
             last_label = labels[-1] if labels else ""
             out_name, out_data = _ocr_one(
-                name, data, labels=labels, label_spec=spec,
+                name, data, labels=labels, label_spec=spec, failed=failed
             )
             results.append((out_name, out_data))
             updated_records.append(_make_record(out_name, first_label, last_label, pages))
@@ -599,7 +611,7 @@ def process_file_pairs(
         if ext in OCR_IMAGE_EXTS:
             label = _format_label(prefix, next_num, digits, with_space=True)
             out_name, out_data = _ocr_one(
-                name, data, label=label, label_spec=spec,
+                name, data, label=label, label_spec=spec, failed=failed
             )
             results.append((out_name, out_data))
             updated_records.append(_make_record(out_name, label, label, 1))
@@ -613,7 +625,7 @@ def process_file_pairs(
     sidecar_bytes = json.dumps(updated_records, ensure_ascii=False, indent=2).encode("utf-8")
     results.append((BATES_RECORDS_SIDECAR, sidecar_bytes))
 
-    return results
+    return results, failed
 
 
 def process_ocr_zip_bytes(zip_bytes: bytes) -> bytes:

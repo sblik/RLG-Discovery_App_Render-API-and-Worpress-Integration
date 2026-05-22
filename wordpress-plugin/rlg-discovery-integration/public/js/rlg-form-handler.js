@@ -45,27 +45,39 @@
         $status.html('<span class="rlg-status loading">Processing... <span class="rlg-spinner"></span></span>');
         $btn.prop('disabled', true);
 
+        var controller = new AbortController();
+        var timeoutId = setTimeout(function () { controller.abort(); }, 120000);
+
         fetch(apiUrl, {
             method: 'POST',
-            body: formData
+            body: formData,
+            signal: controller.signal
         })
             .then(function(response) {
+                clearTimeout(timeoutId);
                 if (!response.ok) {
-                    return response.json().then(function(errData) {
-                        var message = errData.detail || 'Request failed';
-                        throw new Error(message);
-                    }).catch(function(e) {
-                        if (e.message && e.message !== 'Request failed') {
-                            throw e;
-                        }
-                        throw new Error('Network response was not ok: ' + response.statusText);
-                    });
+                    var ctErr = response.headers.get('Content-Type') || '';
+                    if (ctErr.indexOf('application/json') !== -1) {
+                        return response.json().then(function(errData) {
+                            throw new Error(errData.detail || ('Request failed (' + response.status + ')'));
+                        });
+                    }
+                    if (response.status === 413) {
+                        throw new Error('File too large for server to accept.');
+                    }
+                    if (response.status === 502 || response.status === 503 || response.status === 504) {
+                        throw new Error('The server is waking up or busy. Wait ~30s and try again.');
+                    }
+                    throw new Error('Server error: ' + response.status + ' (' + response.statusText + ')');
                 }
 
                 var contentType = response.headers.get('Content-Type') || '';
                 var disposition = response.headers.get('Content-Disposition') || '';
+                var unlock_count = response.headers.get('X-Unlock-Failed-Count') || '';
+                var bates_failed = response.headers.get('X-Bates-Failed-Count') || '';
+                var ocr_failed = response.headers.get('X-OCR-Failed-Count') || '';
                 return response.blob().then(function(blob) {
-                    return { blob: blob, contentType: contentType, disposition: disposition };
+                    return { blob: blob, contentType: contentType, disposition: disposition, unlock_count: unlock_count, bates_failed: bates_failed, ocr_failed: ocr_failed };
                 });
 
             })
@@ -211,16 +223,32 @@
                         // Generate and show the index preview
                         RLG.generateBatesIndexPreview();
 
-                        $status.html('<span class="rlg-status success">Complete! Download started.</span>');
-
+                        var batesFailedN = parseInt(result.bates_failed, 10) || 0;
+                        if (batesFailedN > 0) {
+                            $status.html('<span class="rlg-status success">Complete – but ' + batesFailedN + ' file(s) could not be labeled and were left out. Download started.</span>');
+                        } else {
+                            $status.html('<span class="rlg-status success">Complete! Download started.</span>');
+                        }
                         triggerDownload();
                     });
                 } else {
-                    $status.html('<span class="rlg-status success">Success! Download started.</span>');
+                    var failedN = parseInt(result.unlock_count, 10) || 0;
+                    var ocrFailedN = parseInt(result.ocr_failed, 10) || 0;
+                    if (endpoint === '/unlock' && failedN > 0) {
+                        $status.html('<span class="rlg-status success">Done – but ' + failedN + ' file(s) could not be unlocked (wrong password or corrupt).</span>');
+                    } else if (endpoint ==='/ocr' && ocrFailedN > 0) {
+                        $status.html('<span class="rlg-status success">Done – but ' + ocrFailedN + ' file(s) could not be made searchable and were left as-is.</span>');
+                    } else {
+                        $status.html('<span class="rlg-status success">Success! Download started.</span>');
+                    }
                     triggerDownload();
                 }
             })
             .catch(function(error) {
+                clearTimeout(timeoutId);
+                if (error.name === 'AbortError') {
+                    error = new Error('Request timed out. The file may be large or the server may be starting up – wait a moment and try again.');
+                }
                 console.error('Error:', error);
                 $status.html('<div class="rlg-status error">' +
                     '<strong>Error:</strong> ' + error.message + '<br>' +

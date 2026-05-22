@@ -28,7 +28,7 @@ def unlock_pdfs(
     password_mode: str,
     password_for_all: Optional[str],
     password_map: Dict[str, str]
-) -> bytes:
+) -> tuple:
     """
     Unlock password-protected PDFs.
 
@@ -71,6 +71,8 @@ def unlock_pdfs(
             return f"Unexpected error: {e}", None
 
     zip_buffer = io.BytesIO()
+    succeeded = 0
+    failures = []
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for fname, data in files:
             if _is_mac_resource_junk(fname):
@@ -80,6 +82,9 @@ def unlock_pdfs(
                 out_name = os.path.splitext(fname)[0] + ".pdf"
                 if unlocked_data is not None:
                     zf.writestr(out_name, unlocked_data)
+                    succeeded += 1
+                else:
+                    failures.append((fname, status))
             elif fname.lower().endswith(".zip"):
                 try:
                     with zipfile.ZipFile(io.BytesIO(data), 'r') as inzip:
@@ -95,8 +100,11 @@ def unlock_pdfs(
                             out_name = f"{os.path.splitext(member)[0]}.pdf"
                             if unlocked_data is not None:
                                 zf.writestr(out_name, unlocked_data)
+                                succeeded += 1
+                            else:
+                                failures.append((member, status))
                 except zipfile.BadZipFile:
                     pass
 
     zip_buffer.seek(0)
-    return zip_buffer.read()
+    return zip_buffer.read(), succeeded, failures
