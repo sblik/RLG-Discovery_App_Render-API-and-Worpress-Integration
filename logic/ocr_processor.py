@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-import fitz  # PyMuPDFScreenshot 2026-04-21 at 11.54.08 AMScreenshot 2026-04-21 at 11.54.08 AM
+import fitz  # PyMuPDF — primary PDF manipulation library
 import numpy as np
 from PIL import Image, ImageOps
 
@@ -28,7 +28,7 @@ from .ocr_engine import (
     ocr_pages_words,
 )
 from .utils import _is_mac_resource_junk, natural_key, _format_label
-from .bates_labeler import BATES_RECORDS_SIDECAR
+from .bates_labeler import BATES_RECORDS_SIDECAR, LETTER_WIDTH_PT, LETTER_HEIGHT_PT, JPEG_QUALITY
 
 logger = logging.getLogger(__name__)
 
@@ -139,9 +139,10 @@ def ocr_pdf_bytes(
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     spec = label_spec or LabelSpec()
     have_labels = bool(labels)
+    n_pages = doc.page_count
 
     ocr_needed = False
-    for page_index in range(doc.page_count):
+    for page_index in range(n_pages):
         page = doc.load_page(page_index)
         existing_text = (page.get_text("text") or "").strip()
         if not existing_text:
@@ -149,15 +150,19 @@ def ocr_pdf_bytes(
             break
 
     if not ocr_needed and not have_labels:
+        logger.info("ocr_pdf_bytes: %d page(s) — all pages already searchable, skipping OCR", n_pages)
         out = doc.tobytes()
         doc.close()
         return out
 
+    n_ocr = 0
     # Process one page at a time to minimise memory usage
-    for page_index in range(doc.page_count):
+    for page_index in range(n_pages):
         page = doc.load_page(page_index)
         existing_text = (page.get_text("text") or "").strip()
         if not existing_text:
+            n_ocr += 1
+            logger.debug("ocr_pdf_bytes: running OCR on page %d/%d", page_index + 1, n_pages)
             page_img = pdf_page_to_numpy(page, dpi=dpi)
             words_list = ocr_pages_words([page_img])
             del page_img
@@ -167,6 +172,8 @@ def ocr_pdf_bytes(
         if have_labels and page_index < len(labels):
             _draw_bates_label(page, labels[page_index], spec)
 
+    logger.info("ocr_pdf_bytes: %d page(s) processed — %d needed OCR, %d already had text",
+                n_pages, n_ocr, n_pages - n_ocr)
     out = doc.tobytes()
     doc.close()
     return out
@@ -203,16 +210,16 @@ def ocr_image_bytes(
     width_pt = im.width * 72.0 / dpi
     height_pt = im.height * 72.0 / dpi
 
-    # Define the target PDF size
-    letter_w = 612.0
-    letter_h = 792.0
+    # Define the target PDF size (US Letter, from shared constants)
+    letter_w = LETTER_WIDTH_PT
+    letter_h = LETTER_HEIGHT_PT
 
     # Fit image inside the letter page (scale up or down as needed)
     scale = min(letter_w / width_pt, letter_h / height_pt)
 
     # Re-encode to JPEG (EXIF transpose may have rotated)
     jpeg_buf = io.BytesIO()
-    im.save(jpeg_buf, format="JPEG", quality=85)
+    im.save(jpeg_buf, format="JPEG", quality=JPEG_QUALITY)
     jpeg_bytes = jpeg_buf.getvalue()
 
     # Convert to numpy for OCR, then release PIL image
@@ -283,16 +290,16 @@ def ocr_tiff_bytes(
         width_pt = frame.width * 72.0 / dpi
         height_pt = frame.height * 72.0 / dpi
 
-        # Define the target PDF size
-        letter_w = 612.0
-        letter_h = 792.0
+        # Define the target PDF size (US Letter, from shared constants)
+        letter_w = LETTER_WIDTH_PT
+        letter_h = LETTER_HEIGHT_PT
 
         # Fit image inside the letter page (scale up or down as needed)
         scale = min(letter_w / width_pt, letter_h / height_pt)
 
         # Re-encode frame to JPEG
         jpeg_buf = io.BytesIO()
-        frame.save(jpeg_buf, format="JPEG", quality=85)
+        frame.save(jpeg_buf, format="JPEG", quality=JPEG_QUALITY)
         jpeg_bytes = jpeg_buf.getvalue()
 
         # Convert to numpy for OCR
@@ -481,6 +488,43 @@ def _page_count_pdf(pdf_bytes: bytes) -> int:
         return 1
 
 
+# Minimum non-whitespace characters a page must contain for us to consider
+# it "already searchable". Pages with only a handful of chars may have a tiny
+# invisible text artifact rather than a real text layer (e.g. some metadata).
+_OCR_TEXT_MIN_CHARS = 20
+
+
+def _pdf_is_fully_searchable(pdf_bytes: bytes) -> bool:
+    """
+    Return True if every page of the PDF already has a usable text layer.
+
+    This is the pre-check used before dispatching to OnnxTR so we can skip
+    OCR (and report it clearly to the user) for PDFs that macOS, Apple Notes,
+    or other tools have already made searchable.
+
+    A page is considered searchable if its extracted text contains at least
+    ``_OCR_TEXT_MIN_CHARS`` non-whitespace characters. Pages with only a
+    handful of characters may have stray metadata rather than real OCR output,
+    so we treat those as needing OCR.
+
+    Returns False on any read error so the file falls through to the normal
+    OCR path rather than being silently passed through with no text layer.
+    """
+    try:
+        doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+        for i in range(doc.page_count):
+            page = doc.load_page(i)
+            text = page.get_text("text") or ""
+            non_ws = len(text.replace(" ", "").replace("\n", "").replace("\t", ""))
+            if non_ws < _OCR_TEXT_MIN_CHARS:
+                doc.close()
+                return False
+        doc.close()
+        return True
+    except Exception:
+        return False
+
+
 def _ocr_one(
     fname: str,
     data: bytes,
@@ -515,19 +559,63 @@ def _ocr_one(
 
 def process_file_pairs(
     file_pairs: List[Tuple[str, bytes]],
-) -> List[Tuple[str, bytes]]:
+) -> tuple:
     """OCR every file. If a Bates sidecar is present in the input, activate
     gap-fill mode: label files missing from the sidecar with continued
     numbering, redraw sidecar-listed image labels as native PDF text so
     /index can read them downstream, and re-emit an updated sidecar.
 
-    Returns a new list of (out_name, out_bytes) pairs ready to be zipped.
+    Returns a 3-tuple: (result_pairs, failures, already_searchable).
+
+    * result_pairs   — list of (out_name, out_bytes) ready to be zipped.
+    * failures       — maps filename → reason for every file that could not
+                       be processed. A single failure never aborts the batch.
+    * already_searchable — maps filename → human-readable reason for PDFs that
+                       were skipped because they already had a complete text
+                       layer (e.g. Apple automatically OCR'd them). These files
+                       are passed through unchanged and are NOT failures — the
+                       caller should surface this distinction to the user so
+                       attorneys know which files were truly processed vs.
+                       silently passed through.
     """
     sidecar_records, pairs = _extract_sidecar_from_pairs(file_pairs)
+    failures: Dict[str, str] = {}
+    already_searchable: Dict[str, str] = {}
+
+    mode = "plain" if sidecar_records is None else "gap-fill"
+    logger.info("process_file_pairs: %d file(s), mode=%s", len(pairs), mode)
 
     # Plain OCR mode — no sidecar, no labeling
     if sidecar_records is None:
-        return [_ocr_one(name, data) for name, data in pairs]
+        results = []
+        for name, data in pairs:
+            ext = Path(name).suffix.lower()
+            # Before running OCR (which is expensive), check whether this PDF
+            # already has a complete text layer. Apple's macOS, Preview, and
+            # Photos apps all run OCR automatically, so many client-provided
+            # PDFs arrive fully searchable. Running OnnxTR on them wastes RAM,
+            # takes time, and risks overwriting existing text with lower-quality
+            # model output. Pass them through unchanged and report clearly.
+            if ext == ".pdf" and _pdf_is_fully_searchable(data):
+                already_searchable[name] = (
+                    "Already searchable — OCR skipped "
+                    "(all pages have an existing text layer)"
+                )
+                logger.info("Skipping OCR for '%s' — all pages already have text", name)
+                results.append((name, data))
+                continue
+            try:
+                logger.info("process_file_pairs: OCR-ing '%s'", name)
+                results.append(_ocr_one(name, data))
+            except Exception as e:
+                failures[name] = f"OCR failed: {type(e).__name__}"
+                logger.exception("OCR failed for %s", name)
+
+        logger.info(
+            "process_file_pairs: done — %d processed, %d already searchable, %d failed",
+            len(results) - len(already_searchable), len(already_searchable), len(failures),
+        )
+        return results, failures, already_searchable
 
     # Gap-fill mode
     sidecar_lookup = _build_sidecar_lookup(sidecar_records)
@@ -552,68 +640,77 @@ def process_file_pairs(
         ext = Path(norm).suffix.lower()
         sidecar_entry = sidecar_lookup.get(norm)
 
-        if sidecar_entry is not None:
-            handled_keys.add(norm)
-            first_label = str(sidecar_entry.get("first_label", "") or "")
+        try:
+            if sidecar_entry is not None:
+                handled_keys.add(norm)
+                first_label = str(sidecar_entry.get("first_label", "") or "")
 
-            if ext == ".pdf":
-                # Pre-labeled PDF — OCR text-less pages, leave stamp alone.
-                out_name, out_data = _ocr_one(name, data)
+                if ext == ".pdf":
+                    # Pre-labeled PDF — OCR text-less pages, leave stamp alone.
+                    out_name, out_data = _ocr_one(name, data)
+                    updated_records.append(sidecar_entry)
+                    results.append((out_name, out_data))
+                    continue
+
+                if ext in OCR_IMAGE_EXTS:
+                    # Pre-labeled image — burned-pixel stamp isn't reliably
+                    # OCR'd, so redraw the sidecar's authoritative label as
+                    # native PDF text. /index reads that cleanly.
+                    out_name, out_data = _ocr_one(
+                        name, data, label=first_label, label_spec=spec,
+                    )
+                    updated_records.append(_rekey_record_for_ext_change(sidecar_entry, out_name))
+                    results.append((out_name, out_data))
+                    continue
+
+                # Other files — pass through, keep sidecar entry as-is
                 updated_records.append(sidecar_entry)
+                results.append((name, data))
+                continue
+
+            # Loose file — not in sidecar. OCR + stamp with next-in-sequence.
+            if ext == ".pdf":
+                pages = _page_count_pdf(data)
+                labels = [
+                    _format_label(prefix, next_num + i, digits, with_space=True)
+                    for i in range(pages)
+                ]
+                first_label = labels[0] if labels else ""
+                last_label = labels[-1] if labels else ""
+                out_name, out_data = _ocr_one(
+                    name, data, labels=labels, label_spec=spec,
+                )
                 results.append((out_name, out_data))
+                updated_records.append(_make_record(out_name, first_label, last_label, pages))
+                next_num += pages
                 continue
 
             if ext in OCR_IMAGE_EXTS:
-                # Pre-labeled image — burned-pixel stamp isn't reliably
-                # OCR'd, so redraw the sidecar's authoritative label as
-                # native PDF text. /index reads that cleanly.
+                label = _format_label(prefix, next_num, digits, with_space=True)
                 out_name, out_data = _ocr_one(
-                    name, data, label=first_label, label_spec=spec,
+                    name, data, label=label, label_spec=spec,
                 )
-                updated_records.append(_rekey_record_for_ext_change(sidecar_entry, out_name))
                 results.append((out_name, out_data))
+                updated_records.append(_make_record(out_name, label, label, 1))
+                next_num += 1
                 continue
 
-            # Other files — pass through, keep sidecar entry as-is
-            updated_records.append(sidecar_entry)
+            # Unknown extension — pass through without labeling
             results.append((name, data))
-            continue
 
-        # Loose file — not in sidecar. OCR + stamp with next-in-sequence.
-        if ext == ".pdf":
-            pages = _page_count_pdf(data)
-            labels = [
-                _format_label(prefix, next_num + i, digits, with_space=True)
-                for i in range(pages)
-            ]
-            first_label = labels[0] if labels else ""
-            last_label = labels[-1] if labels else ""
-            out_name, out_data = _ocr_one(
-                name, data, labels=labels, label_spec=spec,
-            )
-            results.append((out_name, out_data))
-            updated_records.append(_make_record(out_name, first_label, last_label, pages))
-            next_num += pages
-            continue
-
-        if ext in OCR_IMAGE_EXTS:
-            label = _format_label(prefix, next_num, digits, with_space=True)
-            out_name, out_data = _ocr_one(
-                name, data, label=label, label_spec=spec,
-            )
-            results.append((out_name, out_data))
-            updated_records.append(_make_record(out_name, label, label, 1))
-            next_num += 1
-            continue
-
-        # Unknown extension — pass through without labeling
-        results.append((name, data))
+        except Exception as e:
+            # Per-file failure: log it, record it, and continue with the batch.
+            failures[name] = f"OCR failed: {type(e).__name__}"
+            logger.exception("OCR gap-fill failed for %s", name)
 
     # Re-emit updated sidecar at the zip root
     sidecar_bytes = json.dumps(updated_records, ensure_ascii=False, indent=2).encode("utf-8")
     results.append((BATES_RECORDS_SIDECAR, sidecar_bytes))
 
-    return results
+    # Gap-fill mode processes every file in the sidecar regardless of whether
+    # it already had a text layer (because it may also need a Bates label drawn
+    # as native text). already_searchable is empty here by design.
+    return results, failures, {}
 
 
 def process_ocr_zip_bytes(zip_bytes: bytes) -> bytes:

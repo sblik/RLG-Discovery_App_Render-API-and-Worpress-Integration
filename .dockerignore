@@ -1,0 +1,37 @@
+# .dockerignore — excludes files that don't belong in the Docker image.
+# Keeps builds fast and the image lean; none of these are needed at runtime.
+
+# Git metadata
+.git
+.gitignore
+
+# Python cache / compiled bytecode
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Test scripts (not needed at runtime)
+test_*.py
+create_plugin_zip.py
+
+# Documentation
+*.md
+*.txt
+!requirements.txt
+
+# Old/legacy app files
+v1_v4_one_stop_discovery_app.py
+
+# Plugin build artifacts
+rlg-discovery-integration-*.zip
+wordpress-plugin/
+
+# Deployment/infrastructure docs
+render.yaml
+Dockerfile
+.dockerignore
+
+# macOS junk
+.DS_Store
+__MACOSX/

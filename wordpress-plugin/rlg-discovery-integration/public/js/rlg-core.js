@@ -93,6 +93,12 @@
         return typeof rlgSettings !== 'undefined' ? rlgSettings.apiUrl : '';
     };
 
+    // Get API key helper — returns the X-API-Key value to include in request headers.
+    // Empty string if not configured (local dev / auth disabled on the server).
+    RLGDiscovery.getApiKey = function() {
+        return typeof rlgSettings !== 'undefined' ? (rlgSettings.apiKey || '') : '';
+    };
+
     console.log('RLG Discovery Core v1.4.0 initialized');
 
 })(jQuery);

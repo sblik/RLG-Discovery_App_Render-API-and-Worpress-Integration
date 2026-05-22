@@ -169,6 +169,23 @@ def _is_bates_sidecar(path_str: str) -> bool:
     return p == "__bates_records.json"
 
 
+def _is_internal_sidecar(path_str: str) -> bool:
+    """Return True for any internal sidecar file that should not count as a
+    user-visible document when deciding whether to unwrap a single-file output.
+
+    Currently covers:
+      • __bates_records.json   — Bates stamp record
+      • _redaction_audit.json  — redaction audit report
+      • _pipeline_report.json  — pipeline run summary
+    """
+    p = str(path_str).replace("\\", "/").lstrip("./")
+    return p in {
+        "__bates_records.json",
+        "_redaction_audit.json",
+        "_pipeline_report.json",
+    }
+
+
 def _filter_pairs_nonjunk(pairs: List[Tuple[str, bytes]]) -> List[Tuple[str, bytes]]:
     """Filter out macOS junk files from a list of file pairs."""
     return [(rel, b) for rel, b in pairs if not _is_mac_resource_junk(rel)]

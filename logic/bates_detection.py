@@ -6,6 +6,8 @@ using text extraction and OCR.
 """
 from __future__ import annotations
 
+import logging
+import os
 import re
 from collections import Counter
 from pathlib import Path
@@ -14,6 +16,8 @@ from typing import Dict, List, Optional, Tuple
 import pandas as pd
 
 from .utils import _is_mac_resource_junk
+
+logger = logging.getLogger(__name__)
 from .text_extraction import (
     _pdf_page_text_blocks,
     _pdf_page_margin_blocks,
@@ -24,10 +28,17 @@ from .text_extraction import (
 # ------------------------
 # Bates detection patterns
 # ------------------------
+
+# Common words that look like Bates prefixes but aren't.
+# Extend at runtime via the BATES_BLACKLIST_PREFIXES env var (comma-separated).
+# Example: BATES_BLACKLIST_PREFIXES=ACME,CORP,REF
 _BLACKLIST_PREFIXES = {
     "MONTHLY", "BOX", "ID", "TARGET", "REQUESTED", "MISC",
     "PAGE", "LOREM", "IPSUM",
 }
+_extra_blacklist = os.environ.get("BATES_BLACKLIST_PREFIXES", "")
+if _extra_blacklist:
+    _BLACKLIST_PREFIXES |= {p.strip().upper() for p in _extra_blacklist.split(",") if p.strip()}
 
 _CANDIDATE_BATES_RE = re.compile(
     r"\b([A-Z][A-Z0-9.]{0,20})[ \t\-–—]+([0-9]{6,10})\b"
@@ -216,3 +227,110 @@ def scan_pairs_for_bates(pairs: List[Tuple[str, bytes]]) -> pd.DataFrame:
             "last_label": last or ""
         })
     return pd.DataFrame(rows)
+
+
+# ---------------------------------------------------------------------------
+# Pre-pass helpers — moved here from main.py (3b refactor).
+# These are pure Bates domain logic with no HTTP concerns, so they belong
+# alongside scan_pairs_for_bates() rather than in the API layer.
+# ---------------------------------------------------------------------------
+
+# Matches "PREFIX 000123" or bare "000123" tokens emitted by the detector.
+BATES_TOKEN_RE = re.compile(r"^\s*([A-Z][A-Z0-9.]*)?\s*(\d{4,10})\s*$")
+
+
+def parse_bates_token(tok: str):
+    """Return (prefix, number) parsed from a detected Bates token.
+
+    Detector outputs look like 'TMN 000185' or bare '000185'. Returns
+    (prefix_str, int_number) on success, or (None, None) if the token
+    doesn't match the expected shape.
+    """
+    if not tok:
+        return None, None
+    m = BATES_TOKEN_RE.match(str(tok))
+    if not m:
+        return None, None
+    pfx = (m.group(1) or "").strip()
+    try:
+        num = int(m.group(2))
+    except (TypeError, ValueError):
+        return None, None
+    return pfx, num
+
+
+def detect_preexisting_bates(
+    file_pairs: list,
+    *,
+    user_prefix: str,
+    user_start: int,
+):
+    """Detect pre-labeled files in the input and compute effective numbering.
+
+    Runs scan_pairs_for_bates() over the input pairs. For each file that
+    comes back with a non-empty label, records a skip_existing entry and
+    tracks the detected prefix + max number. Returns:
+
+        (skip_existing, effective_prefix, effective_start)
+
+    where skip_existing is a dict mapping rel_path -> (first_label, last_label)
+    suitable for walk_and_label(), and effective_prefix / effective_start are the
+    values to pass to the labeler for the *unlabeled* files (auto-continued from
+    max+1 when any detection succeeded).
+
+    If the input contains no pre-labeled files, skip_existing is empty and
+    the user's prefix/start_num are passed through unchanged.
+    """
+    try:
+        det = scan_pairs_for_bates(file_pairs)
+    except Exception:
+        logger.exception("Bates pre-pass detection failed; falling back to full stamping")
+        return {}, user_prefix, user_start
+
+    skip_existing = {}
+    detected_prefixes = []
+    max_detected = 0
+
+    if det is None or det.empty:
+        return {}, user_prefix, user_start
+
+    for _, row in det.iterrows():
+        first = (row.get("first_label", "") or "").strip()
+        last = (row.get("last_label", "") or first).strip()
+        if not first:
+            continue
+        rel_dir = (row.get("rel_dir", "") or "").replace("\\", "/").strip("/")
+        fname = row.get("filename", "") or ""
+        key = f"{rel_dir}/{fname}" if rel_dir and rel_dir != "." else fname
+        skip_existing[key] = (first, last)
+
+        pfx_f, num_f = parse_bates_token(first)
+        pfx_l, num_l = parse_bates_token(last)
+        if pfx_f is not None:
+            detected_prefixes.append(pfx_f)
+        if pfx_l is not None:
+            detected_prefixes.append(pfx_l)
+        if num_l is not None:
+            max_detected = max(max_detected, num_l)
+        elif num_f is not None:
+            max_detected = max(max_detected, num_f)
+
+    if not skip_existing:
+        return {}, user_prefix, user_start
+
+    # Pick dominant prefix (most common). Empty string is a valid "bare
+    # numbering" prefix — the labeler handles it correctly.
+    prefix_counts = Counter(detected_prefixes)
+    dominant_prefix = ""
+    if prefix_counts:
+        dominant_prefix = prefix_counts.most_common(1)[0][0]
+
+    effective_start = max_detected + 1 if max_detected > 0 else user_start
+    effective_prefix = dominant_prefix
+
+    logger.info(
+        "Bates pre-pass: %d file(s) already labeled, detected prefix=%r, "
+        "auto-continuing new stamps at %d",
+        len(skip_existing), effective_prefix, effective_start,
+    )
+    return skip_existing, effective_prefix, effective_start

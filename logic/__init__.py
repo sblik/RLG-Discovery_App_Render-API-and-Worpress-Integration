@@ -34,6 +34,7 @@ from .utils import (
     _pil_dpi,
     _is_mac_resource_junk,
     _is_bates_sidecar,
+    _is_internal_sidecar,
     _filter_pairs_nonjunk,
 )
 
@@ -74,6 +75,10 @@ from .bates_detection import (
     _best_token_for_prefix,
     _extract_bates_for_file,
     scan_pairs_for_bates,
+    # Pre-pass helpers (moved from main.py — pure Bates domain logic)
+    BATES_TOKEN_RE,
+    parse_bates_token,
+    detect_preexisting_bates,
 )
 
 # ------------------------
@@ -81,6 +86,7 @@ from .bates_detection import (
 # ------------------------
 from .pdf_unlock import (
     unlock_pdfs,
+    check_passwords,
     PIKEPDF_AVAILABLE,
 )
 
@@ -96,6 +102,7 @@ from .organize import (
 # ------------------------
 from .bates_labeler import (
     IMAGE_EXTS,
+    BATES_RECORDS_SIDECAR,
     BatesRecord,
     walk_and_label,
 )
@@ -146,9 +153,27 @@ from .ocr_processor import (
 )
 
 # ------------------------
-# Module version
+# Pipeline scan module exports
 # ------------------------
-__version__ = "2.0.0"
+from .pipeline_scan import (
+    FileScanResult,
+    ScanManifest,
+    scan_files,
+)
+
+# ------------------------
+# Pipeline report module exports
+# ------------------------
+from .pipeline_report import (
+    FileResult,
+    PipelineReport,
+)
+
+# ------------------------
+# Module version — sourced from the repo-root version.py so there is
+# exactly one place to bump the version number across the whole project.
+# ------------------------
+from version import __version__  # noqa: F401
 
 __all__ = [
     # Standard library re-exports
@@ -167,6 +192,7 @@ __all__ = [
     "_pil_dpi",
     "_is_mac_resource_junk",
     "_is_bates_sidecar",
+    "_is_internal_sidecar",
     "_filter_pairs_nonjunk",
     # Text extraction
     "_pdf_page_text_or_ocr",
@@ -194,11 +220,13 @@ __all__ = [
     "scan_pairs_for_bates",
     # PDF unlock
     "unlock_pdfs",
+    "check_passwords",
     "PIKEPDF_AVAILABLE",
     # Organize
     "organize_by_year",
     # Bates labeler
     "IMAGE_EXTS",
+    "BATES_RECORDS_SIDECAR",
     "BatesRecord",
     "walk_and_label",
     # Excel
@@ -225,4 +253,11 @@ __all__ = [
     "process_ocr_zip_bytes",
     "process_file_pairs",
     "LabelSpec",
+    # Pipeline scan
+    "FileScanResult",
+    "ScanManifest",
+    "scan_files",
+    # Pipeline report
+    "FileResult",
+    "PipelineReport",
 ]

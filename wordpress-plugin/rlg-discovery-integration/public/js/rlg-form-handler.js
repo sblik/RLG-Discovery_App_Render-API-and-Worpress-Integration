@@ -45,8 +45,18 @@
         $status.html('<span class="rlg-status loading">Processing... <span class="rlg-spinner"></span></span>');
         $btn.prop('disabled', true);
 
+        // Build request headers. X-API-Key is always included so the server
+        // can validate requests. If the key is blank (local dev / auth disabled),
+        // the header is sent empty and the server allows it through.
+        var requestHeaders = {};
+        var apiKey = RLG.getApiKey();
+        if (apiKey) {
+            requestHeaders['X-API-Key'] = apiKey;
+        }
+
         fetch(apiUrl, {
             method: 'POST',
+            headers: requestHeaders,
             body: formData
         })
             .then(function(response) {

@@ -17,6 +17,17 @@ from typing import Dict, List, Optional, Tuple
 
 BATES_RECORDS_SIDECAR = "__bates_records.json"
 
+logger = logging.getLogger(__name__)
+
+# Standard US Letter page dimensions in PDF points (72 pt/inch).
+# Used when converting images to letter-sized PDF pages for Bates stamping.
+LETTER_WIDTH_PT  = 612.0  # 8.5 inches × 72 pt/in
+LETTER_HEIGHT_PT = 792.0  # 11.0 inches × 72 pt/in
+
+# JPEG re-encode quality for image-to-PDF conversion.
+# 92 balances file size against visual fidelity for legal documents.
+JPEG_QUALITY = 92
+
 
 def _norm_rel_path(rel_dir: str, filename: str) -> str:
     """Normalize a rel_dir/filename pair into a forward-slash key."""
@@ -141,7 +152,7 @@ def _image_to_letter_pdf_bytes(src: Path) -> bytes:
     width_pt = im.width * 72.0 / dpi
     height_pt = im.height * 72.0 / dpi
 
-    letter_w, letter_h = 612.0, 792.0
+    letter_w, letter_h = LETTER_WIDTH_PT, LETTER_HEIGHT_PT
     scale = min(letter_w / width_pt, letter_h / height_pt)
     scaled_w = width_pt * scale
     scaled_h = height_pt * scale
@@ -149,7 +160,7 @@ def _image_to_letter_pdf_bytes(src: Path) -> bytes:
     y_offset = (letter_h - scaled_h) / 2
 
     jpeg_buf = io.BytesIO()
-    im.save(jpeg_buf, format="JPEG", quality=92)
+    im.save(jpeg_buf, format="JPEG", quality=JPEG_QUALITY)
     jpeg_bytes = jpeg_buf.getvalue()
 
     doc = fitz.open()
@@ -229,7 +240,7 @@ def _label_image(
     draw.text((x, y), label, font=font, fill=color_rgb)
 
     if out_file.suffix.lower() in [".jpg", ".jpeg"]:
-        img.convert("RGB").save(out_file, quality=92, optimize=True)
+        img.convert("RGB").save(out_file, quality=JPEG_QUALITY, optimize=True)
     else:
         img.save(out_file)
 
@@ -286,7 +297,7 @@ def walk_and_label(
     border_all_pt: float = 0.0,
     diagnostics: bool = False,
     skip_existing: Optional[Dict[str, Tuple[str, str]]] = None,
-) -> Tuple[List[BatesRecord], int, Path]:
+) -> Tuple[List[BatesRecord], int, Path, Dict[str, str]]:
     """
     Apply Bates labels to PDFs and images.
 
@@ -313,14 +324,18 @@ def walk_and_label(
             the sidecar captures them alongside freshly-stamped files.
 
     Returns:
-        Tuple of (records, last_used_number, zip_path).
+        Tuple of (records, last_used_number, zip_path, failures).
 
         `zip_path` points to a tempfile on disk that survives the
         staging-dir teardown — caller is responsible for deleting it
         once the response has been streamed.
+
+        `failures` maps filename → reason string for every file that could
+        not be labeled. Successfully labeled files are always in zip_path;
+        a failure on one file never aborts the rest of the batch.
     """
     skip_map = skip_existing or {}
-    logger = logging.getLogger(__name__)
+    failures: Dict[str, str] = {}
     if diagnostics:
         logger.setLevel(logging.DEBUG)
         if not logger.handlers:
@@ -401,7 +416,9 @@ def walk_and_label(
                             last_label=last_label,
                             category=cat,
                         ))
-                    except Exception:
+                    except Exception as e:
+                        key = _norm_rel_path(rel_dir, fname)
+                        failures[key] = f"Failed to preserve PDF: {type(e).__name__}"
                         logger.exception("Failed to preserve PDF: %s", fname)
                     continue
 
@@ -491,7 +508,9 @@ def walk_and_label(
                     logger.info("Bates labeled PDF %d/%d: %s (%d pages)",
                                 files_done, staged_count, fname, pages_count)
 
-                except Exception:
+                except Exception as e:
+                    key = _norm_rel_path(rel_dir, fname)
+                    failures[key] = f"Failed to label PDF: {type(e).__name__}"
                     logger.exception("Failed to label PDF: %s", fname)
                     continue
 
@@ -532,7 +551,9 @@ def walk_and_label(
                             last_label=last_label,
                             category=cat,
                         ))
-                    except Exception:
+                    except Exception as e:
+                        key = _norm_rel_path(rel_dir, fname)
+                        failures[key] = f"Failed to preserve image: {type(e).__name__}"
                         logger.exception("Failed to preserve image: %s", fname)
                     continue
 
@@ -551,7 +572,7 @@ def walk_and_label(
 
                     letter_pdf_bytes = _image_to_letter_pdf_bytes(src)
 
-                    w, h = 612.0, 792.0
+                    w, h = LETTER_WIDTH_PT, LETTER_HEIGHT_PT
 
                     mr, mb = margin_right, margin_bottom
                     if zone:
@@ -590,7 +611,9 @@ def walk_and_label(
                     files_done += 1
                     logger.info("Bates labeled image %d/%d: %s -> %s",
                                 files_done, staged_count, fname, out_pdf.name)
-                except Exception:
+                except Exception as e:
+                    key = _norm_rel_path(rel_dir, fname)
+                    failures[key] = f"Failed to label image: {type(e).__name__}"
                     logger.exception("Failed to label image: %s", fname)
                     continue
 
@@ -635,4 +658,4 @@ def walk_and_label(
         # tempdir context so it survives function return.
         zip_path = _zip_dir_to_path(output, suffix="_LABELED.zip")
 
-    return records, current - 1, zip_path
+    return records, current - 1, zip_path, failures

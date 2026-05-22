@@ -1,8 +1,8 @@
 <?php
 /**
  * Plugin Name: RLG Discovery Integration
- * Description: Integrates RLG Discovery Tools (Unlock, Organize, Bates, Index, Redact, OCR) via shortcodes.
- * Version: 1.7.2
+ * Description: Integrates RLG Discovery Tools (Unlock, Organize, Bates, Index, Redact, OCR, Pipeline) via shortcodes.
+ * Version: 1.9.0
  * Author: RLG
  */
 
@@ -22,7 +22,7 @@ require_once RLG_DISCOVERY_PATH . 'public/shortcodes.php';
 
 // Enqueue Scripts & Styles
 function rlg_discovery_enqueue_scripts() {
-    $version = '1.7.2';
+    $version = '1.9.0';
     $js_path = RLG_DISCOVERY_URL . 'public/js/';
 
     // CSS
@@ -41,10 +41,20 @@ function rlg_discovery_enqueue_scripts() {
     wp_enqueue_script('rlg-ui-controls', $js_path . 'rlg-ui-controls.js', array('rlg-core', 'rlg-bates-preview', 'rlg-index-preview'), $version, true);
     wp_enqueue_script('rlg-form-handler', $js_path . 'rlg-form-handler.js', array('rlg-core', 'rlg-bates-preview', 'rlg-index-preview'), $version, true);
 
-    // Localize settings on core module
+    // Pipeline shortcode script — drives the [rlg_pipeline] stepper UI.
+    // Depends on rlg-core for RLGDiscovery.getApiUrl() / getApiKey().
+    wp_enqueue_script('rlg-pipeline', $js_path . 'rlg-pipeline.js', array('rlg-core', 'jquery'), $version, true);
+
+    // Localize settings on core module.
+    // apiKey is passed to JS so every fetch() call can include it in the
+    // X-API-Key header. The value is read-only from the browser's perspective
+    // and is already visible in WP network traffic to authenticated portal
+    // users — it protects against external callers, not insider threats.
     $api_url = get_option('rlg_discovery_api_url', 'https://discovery-one-stop.onrender.com');
+    $api_key = get_option('rlg_discovery_api_key', '');
     wp_localize_script('rlg-core', 'rlgSettings', array(
-        'apiUrl' => rtrim($api_url, '/'),
+        'apiUrl'     => rtrim($api_url, '/'),
+        'apiKey'     => $api_key,
         'pdfWorkerUrl' => 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js'
     ));
 }
