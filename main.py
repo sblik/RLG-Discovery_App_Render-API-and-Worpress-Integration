@@ -199,10 +199,13 @@ async def organize_endpoint(
         content = await f.read()
         # Handle ZIP upload if single file is ZIP
         if f.filename.lower().endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(content)) as zf:
-                for info in zf.infolist():
-                    if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
-                        file_pairs.append((info.filename, zf.read(info)))
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                    for info in zf.infolist():
+                        if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
+                            file_pairs.append((info.filename, zf.read(info)))
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Could not read '{f.filename}': it may be corrupt or not a valid ZIP.")
         else:
             file_pairs.append((f.filename, content))
 
@@ -345,10 +348,13 @@ async def bates_endpoint(
     for f in files:
         content = await f.read()
         if f.filename.lower().endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(content)) as zf:
-                for info in zf.infolist():
-                    if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
-                        file_pairs.append((info.filename, zf.read(info)))
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                    for info in zf.infolist():
+                        if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
+                            file_pairs.append((info.filename, zf.read(info)))
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Could not read '{f.filename}': it may be corrupt or not a valid ZIP.")
             del content  # free upload bytes after extraction
         else:
             file_pairs.append((f.filename, content))
@@ -718,10 +724,13 @@ async def ocr_endpoint(
     for f in files:
         content = await f.read()
         if f.filename.lower().endswith(".zip"):
-            with zipfile.ZipFile(io.BytesIO(content)) as zf:
-                for info in zf.infolist():
-                    if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
-                        file_pairs.append((info.filename, zf.read(info)))
+            try:
+                with zipfile.ZipFile(io.BytesIO(content)) as zf:
+                    for info in zf.infolist():
+                        if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
+                            file_pairs.append((info.filename, zf.read(info)))
+            except Exception:
+                raise HTTPException(status_code=400, detail=f"Could not read '{f.filename}': it may be corrupt or not a valid ZIP.")
         else:
             file_pairs.append((f.filename, content))
 
