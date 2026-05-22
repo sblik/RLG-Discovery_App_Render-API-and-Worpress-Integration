@@ -286,7 +286,7 @@ def walk_and_label(
     border_all_pt: float = 0.0,
     diagnostics: bool = False,
     skip_existing: Optional[Dict[str, Tuple[str, str]]] = None,
-) -> Tuple[List[BatesRecord], int, Path]:
+) -> Tuple[List[BatesRecord], int, Path, List[str]]:
     """
     Apply Bates labels to PDFs and images.
 
@@ -355,6 +355,7 @@ def walk_and_label(
 
         current = start_num
         records: List[BatesRecord] = []
+        failed: List[str] = []
         files_done = 0
 
         for dirpath, dirnames, filenames in os.walk(staged, topdown=True):
@@ -403,6 +404,7 @@ def walk_and_label(
                         ))
                     except Exception:
                         logger.exception("Failed to preserve PDF: %s", fname)
+                        failed.append(fname)
                     continue
 
                 first = current
@@ -493,6 +495,7 @@ def walk_and_label(
 
                 except Exception:
                     logger.exception("Failed to label PDF: %s", fname)
+                    failed.append(fname)
                     continue
 
                 last = current - 1
@@ -534,6 +537,7 @@ def walk_and_label(
                         ))
                     except Exception:
                         logger.exception("Failed to preserve image: %s", fname)
+                        failed.append(fname)
                     continue
 
                 first = current
@@ -592,6 +596,7 @@ def walk_and_label(
                                 files_done, staged_count, fname, out_pdf.name)
                 except Exception:
                     logger.exception("Failed to label image: %s", fname)
+                    failed.append(fname)
                     continue
 
                 last = current - 1
@@ -635,4 +640,4 @@ def walk_and_label(
         # tempdir context so it survives function return.
         zip_path = _zip_dir_to_path(output, suffix="_LABELED.zip")
 
-    return records, current - 1, zip_path
+    return records, current - 1, zip_path, failed

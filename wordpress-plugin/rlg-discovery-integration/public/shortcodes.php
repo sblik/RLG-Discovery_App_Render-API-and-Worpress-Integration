@@ -145,7 +145,7 @@ function rlg_shortcode_bates($atts) {
                         </div>
                         <div class="rlg-form-group rlg-toggle-field" id="punch-margin-field" style="display: none;">
                             <label>Punch Margin (pt)</label>
-                            <input type="number" name="left_punch_margin" value="36" min="0" max="72">
+                            <input type="number" name="left_punch_margin" value="36" min="0" max="72" disabled>
                         </div>
                         <div class="rlg-form-group rlg-checkbox-toggle">
                             <label>
@@ -155,7 +155,7 @@ function rlg_shortcode_bates($atts) {
                         </div>
                         <div class="rlg-form-group rlg-toggle-field" id="border-field" style="display: none;">
                             <label>Border (pt)</label>
-                            <input type="number" name="border_all_pt" value="12" min="0" max="36">
+                            <input type="number" name="border_all_pt" value="12" min="0" max="36" disabled>
                         </div>
                     </section>
                     <button type="submit" class="rlg-btn">Label Files</button>

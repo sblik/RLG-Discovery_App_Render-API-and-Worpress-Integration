@@ -27,7 +27,7 @@ if OCR_AVAILABLE:
         logger.exception("Failed to pre-load OCR predictor")
 
 app = FastAPI(
-    title="Discovery One-Stop API",
+    title="SCOUT",
     description="API for legal document processing: Unlock, Organize, Bates Stamp, Redact.",
     version="1.0.0"
 )
@@ -40,7 +40,7 @@ app.add_middleware(
     allow_credentials=False,
     allow_methods=["*"],  # Allows all methods
     allow_headers=["*"],  # Allows all headers
-    expose_headers=["Content-Disposition", "X-Last-Bates-Number", "X-Total-Hits"],
+    expose_headers=["Content-Disposition", "X-Last-Bates-Number", "X-Total-Hits", "X-Unlock-Failed-Count", "X-Bates-Failed-Count", "X-OCR-Failed-Count"],
 )
 
 _SINGLE_FILE_TYPES = {
@@ -150,8 +150,10 @@ async def unlock_pdfs_endpoint(
                     password_map[row[0]] = row[1]
 
     try:
-        result_zip = logic.unlock_pdfs(file_pairs, password_mode, password_for_all, password_map)
-
+        result_zip, succeeded, failures = logic.unlock_pdfs(file_pairs, password_mode, password_for_all, password_map)
+        if succeeded == 0:
+            detail = 'No files could be unlocked. ' + '; '.join(f"{name}: {reason}" for name, reason in failures)
+            raise HTTPException(status_code=422, detail=detail)
         single = _maybe_unwrap_single_file(result_zip)
         if single:
             file_bytes, file_name, media = single
@@ -160,15 +162,21 @@ async def unlock_pdfs_endpoint(
                 io.BytesIO(file_bytes),
                 media_type=media,
                 headers={
-                    "Content-Disposition": f'attachment; filename="{out_name}"'
+                    "Content-Disposition": f'attachment; filename="{out_name}"',
+                    "X-Unlock-Failed-Count": str(len(failures))
                 }
             )
 
         return StreamingResponse(
             io.BytesIO(result_zip),
             media_type="application/zip",
-            headers={"Content-Disposition": f'attachment; filename="{_output_name(files, "_unlocked")}"'}
+            headers={
+            "Content-Disposition": f'attachment; filename="{_output_name(files, "_unlocked")}"',
+            "X-Unlock-Failed-Count": str(len(failures)),
+            }
         )
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -362,7 +370,7 @@ async def bates_endpoint(
     )
 
     try:
-        records, last_used, zip_path = await asyncio.to_thread(
+        records, last_used, zip_path, failed = await asyncio.to_thread(
             logic.walk_and_label,
             file_pairs,
             prefix=effective_prefix,
@@ -401,7 +409,8 @@ async def bates_endpoint(
                 media_type=media,
                 headers={
                     "Content-Disposition": f'attachment; filename="{out_name}"',
-                    "X-Last-Bates-Number": str(last_used)
+                    "X-Last-Bates-Number": str(last_used),
+                    "X-Bates-Failed-Count": str(len(failed))
                 },
                 background=cleanup_task,
             )
@@ -410,7 +419,10 @@ async def bates_endpoint(
             str(zip_path),
             media_type="application/zip",
             filename=_output_name(files, "_LABELED"),
-            headers={"X-Last-Bates-Number": str(last_used)},
+            headers={
+                "X-Last-Bates-Number": str(last_used),
+                "X-Bates-Failed-Count": str(len(failed))
+                },
             background=cleanup_task,
         )
     except Exception as e:
@@ -615,6 +627,8 @@ async def index_endpoint(
             headers={"Content-Disposition": f'attachment; filename="{_output_name([file], "_index", ".xlsx")}"'}
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -715,7 +729,7 @@ async def ocr_endpoint(
 
     try:
         async with _ocr_semaphore:
-            result_pairs = await asyncio.to_thread(_ocr_file_pairs, file_pairs)
+            result_pairs, ocr_failed = await asyncio.to_thread(_ocr_file_pairs, file_pairs)
 
         # Single file — return bare PDF/image
         if len(result_pairs) == 1:
@@ -729,6 +743,7 @@ async def ocr_endpoint(
                 headers={
                     "Content-Disposition": f'attachment; filename="{out_name}"',
                     "Content-Length": str(len(data)),
+                    "X-OCR-Failed-Count": str(len(ocr_failed))
                 }
             )
 
@@ -745,6 +760,7 @@ async def ocr_endpoint(
             headers={
                 "Content-Disposition": f'attachment; filename="{_output_name(files, "_searchable")}"',
                 "Content-Length": str(len(zip_bytes)),
+                "X-OCR-Failed-Count": str(len(ocr_failed))
             }
         )
     except Exception as e:
@@ -752,7 +768,7 @@ async def ocr_endpoint(
         raise HTTPException(status_code=500, detail=str(e))
 
 
-def _ocr_file_pairs(file_pairs: list) -> list:
+def _ocr_file_pairs(file_pairs: list):
     """Process file pairs through OCR with sidecar-aware gap-fill.
 
     If the input contains a ``__bates_records.json`` sidecar, gap-fill mode

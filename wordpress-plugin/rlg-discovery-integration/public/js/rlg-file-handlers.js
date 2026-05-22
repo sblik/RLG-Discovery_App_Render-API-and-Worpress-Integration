@@ -264,7 +264,7 @@
                 var files = await RLG.extractFilesFromZip(e.target.result);
 
                 if (files.length === 0) {
-                    RLG.showPreviewError('No PDF or image files found in ZIP');
+                    RLG.showPreviewError('Couldn\'t read this ZIP – it may be empty, corrupt, or password protected.');
                     // Reset Discovery Index preview
                     var $indexPreview = $('#index-preview');
                     $indexPreview.find('.rlg-preview-placeholder').show();

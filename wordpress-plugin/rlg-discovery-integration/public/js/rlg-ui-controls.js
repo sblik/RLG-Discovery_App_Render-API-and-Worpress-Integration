@@ -31,13 +31,14 @@
     $(document).on('change', 'input[data-target]', function() {
         var targetId = $(this).data('target');
         var $target = $('#' + targetId);
-        var $input = $target.find('input');
+        var $input = $target.find('input, textarea');
 
         if ($(this).is(':checked')) {
+            $input.prop('disabled', false);
             $target.slideDown(200);
         } else {
             $target.slideUp(200);
-            $input.val(0);
+            $input.prop('disabled', true);
         }
     });
 
