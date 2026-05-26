@@ -116,4 +116,19 @@
         }
     });
 
+    // Gray out the password input field if the user selects "Try No Password" on the Unlock tool
+    $(document).on('change', 'select[name="password_mode"]', function() {
+        var $select = $(this);
+        var $pw = $select.closest('form').find('input[name="password_for_all"]');
+        var noPassword = $select.val().indexOf('Try no password') === 0;
+        $pw.prop('disabled', noPassword);
+        if (noPassword) {
+            $pw.val('');
+        }
+    })
+
+    $(document).ready(function() {
+        $('select[name="password_mode"]').trigger('change');
+    });
+
 })(jQuery);
