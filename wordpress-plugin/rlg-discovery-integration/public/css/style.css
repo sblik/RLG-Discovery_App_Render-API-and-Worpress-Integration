@@ -42,12 +42,12 @@
 
 .smplfy-center-content {
     display: flex;
-    flex-direction: column;
     justify-content: center;
 }
 
 .smplfy-center-content > .gb-block-layout-column-inner:has(.rlg-discovery-tabs-container) {
     width: 1000px;
+    flex-direction: column;
 }
 
 /* --------------------------------------------------------------------------
