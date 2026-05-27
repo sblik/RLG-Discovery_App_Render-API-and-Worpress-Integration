@@ -448,7 +448,12 @@ add_shortcode('rlg_discovery_tools', 'rlg_shortcode_discovery_tools');
 function rlg_shortcode_pipeline($atts) {
     ob_start();
     ?>
-    <div class="rlg-pipeline-tool" id="rlg-pipeline-tool">
+    <div class="rlg-pipeline-tool rlg-splash-active" id="rlg-pipeline-tool">
+
+        <!--    Scout Loading Image (same splash as the tools container)    -->
+        <div class="rlg-splash-overlay">
+            <img src="<?php echo RLG_DISCOVERY_URL; ?>public/images/SCOUT.png" alt="Scout">
+        </div>
 
         <div class="rlg-pl-header">
             <h3>All-in-One Processing</h3>
@@ -732,7 +737,7 @@ function rlg_shortcode_pipeline($atts) {
          =================================================================== -->
     <style>
     /* ---- Outer shell ---- */
-    .rlg-pipeline-tool { max-width: 860px; margin: 0 auto; font-family: inherit; }
+    .rlg-pipeline-tool { max-width: 860px; margin: 0 auto; font-family: inherit; position: relative; }
     .rlg-pl-header h3  { margin: 0 0 4px; }
     .rlg-pl-header p   { color: #555; margin: 0 0 20px; }
     .rlg-pl-hint       { color: #6b7280; font-size: 12px; margin: 0 0 8px; font-style: italic; }
