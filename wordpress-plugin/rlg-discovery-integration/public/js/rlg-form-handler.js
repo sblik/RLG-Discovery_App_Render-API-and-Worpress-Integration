@@ -14,10 +14,17 @@
         e.preventDefault();
 
         var $form = $(this);
+
+        // The pipeline form shares the .rlg-discovery-form class but has no
+        // data-endpoint — it is driven entirely by rlg-pipeline.js. Bail out so
+        // this generic handler doesn't fire a bogus "<apiUrl>undefined" request
+        // (and doesn't hijack/disable the pipeline's own submit button).
+        var endpoint = $form.data('endpoint');
+        if (!endpoint) return;
+
         var $status = $form.find('.rlg-status');
         var $btn = $form.find('button[type="submit"]');
 
-        var endpoint = $form.data('endpoint');
         var apiUrl = RLG.getApiUrl() + endpoint;
 
         var formData = new FormData(this);
