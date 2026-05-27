@@ -7,7 +7,10 @@ from __future__ import annotations
 
 import gc
 import io
+import json
+import logging
 import re
+import time
 import zipfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +19,8 @@ from typing import Dict, List, Optional, Set, Tuple, Iterable
 from PIL import Image
 
 from .utils import _is_mac_resource_junk
+
+logger = logging.getLogger(__name__)
 
 # Optional: PyMuPDF
 try:
@@ -37,8 +42,16 @@ from .ocr_engine import OCR_AVAILABLE, OCR_DPI, pdf_page_to_numpy, ocr_pages_wor
 # ------------------------
 # Constants and patterns
 # ------------------------
-SSN_CONTEXT_WORDS = re.compile(r"\b(ssn|social\s*security|soc\s*sec|ss#|tin|taxpayer\s*id)\b", re.I)
+SSN_CONTEXT_WORDS = re.compile(r"\b(ssn|social\s*security|soc\s*sec|ss#|tin|taxpayer\s*id)(?!\w)", re.I)
 DEFAULT_REQUIRE_SSN_CONTEXT = True
+
+# EIN context words — require one of these nearby before redacting an XX-XXXXXXX number.
+# This prevents false positives on case numbers, account numbers, and other hyphenated
+# 9-digit sequences that are not employer identification numbers.
+EIN_CONTEXT_WORDS = re.compile(
+    r"\b(ein|employer\s*id|employer\s*identification|federal\s*tax\s*id|fein|tax\s*id)\b",
+    re.I,
+)
 
 # Presets updated to support pipes/spaces/hyphens and plain 9-digit SSN
 # Note: Removed 9\d\d exclusion from SSN patterns - SSA now assigns 9xx prefixes
@@ -47,6 +60,12 @@ PRESETS: Dict[str, List[str]] = {
         r"(?<!\d)(?!000|666)\d{3}[-\s|](?!00)\d{2}[-\s|](?!0000)\d{4}(?!\d)",
         r"(?<!\d)(?!000|666)\d{3}(?:(?:\s*\|\s*)|(?:\s+)|(?:-))(?!00)\d{2}(?:(?:\s*\|\s*)|(?:\s+)|(?:-))(?!0000)\d{4}(?!\d)",
         r"(?<!\d)(?!000|666)\d{9}(?!\d)",
+    ],
+    "EIN": [
+        # Employer Identification Number: XX-XXXXXXX
+        # Context-word check is always enforced in redact_pdf_bytes() to prevent
+        # false positives on case numbers, phone extensions, and similar patterns.
+        r"\b\d{2}-\d{7}\b",
     ],
     "Email": [
         r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b",
@@ -58,6 +77,20 @@ PRESETS: Dict[str, List[str]] = {
     ],
     "Date": [r"\b(?:\d{1,2}[/-]){2}\d{2,4}\b", r"\b\d{4}-\d{2}-\d{2}\b"],
     "8-digit number": [r"\b\d{8}\b"],
+    # Credit card numbers — major card types with optional spaces/hyphens between groups
+    "Credit Card": [
+        r"\b4[0-9]{3}(?:[\s\-]?[0-9]{4}){3}\b",                          # Visa
+        r"\b5[1-5][0-9]{2}(?:[\s\-]?[0-9]{4}){3}\b",                     # Mastercard (51–55)
+        r"\b2[2-7][0-9]{2}(?:[\s\-]?[0-9]{4}){3}\b",                     # Mastercard (2221–2720)
+        r"\b3[47][0-9]{2}[\s\-]?[0-9]{6}[\s\-]?[0-9]{5}\b",              # Amex (4-6-5 groups)
+        r"\b6(?:011|5[0-9]{2})(?:[\s\-]?[0-9]{4}){3}\b",                 # Discover
+    ],
+    # Date of Birth — only redacts when a DOB label appears nearby to avoid
+    # redacting all dates (use the plain "Date" preset for that).
+    "Date of Birth": [
+        r"(?i)(?:date\s+of\s+birth|d\.?o\.?b\.?|born\s+on?)[\s:,]+\d{1,2}[/\-\.]\d{1,2}[/\-\.]\d{2,4}",
+        r"(?i)(?:date\s+of\s+birth|d\.?o\.?b\.?)[\s:,]+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\w*\.?\s+\d{1,2},?\s+\d{4}",
+    ],
 }
 
 
@@ -96,7 +129,12 @@ def load_patterns(
     """
     raw: List[str] = []
     for key in preset_keys:
-        raw.extend(PRESETS.get(key, []))
+        # Swagger UI joins multi-select List[str] form fields into a single
+        # comma-separated string (e.g. "SSN,EIN,Credit Card").  Split those
+        # here so Swagger and the WordPress plugin both work correctly.
+        for subkey in re.split(r"\s*,\s*", key.strip()):
+            if subkey:
+                raw.extend(PRESETS.get(subkey, []))
     if text_block:
         for line in text_block.splitlines():
             s = line.strip()
@@ -244,21 +282,34 @@ def redact_pdf_bytes(
     if fitz is None:
         raise RuntimeError("PyMuPDF (pymupdf) is required. Install with: pip install pymupdf")
     hits: List[Hit] = []
+    _t0 = time.monotonic()
 
     SSN_PATTERNS = {p for p in PRESETS["SSN"]}
+    EIN_PATTERNS = {p for p in PRESETS["EIN"]}
 
     def _is_ssn_pat(pat: re.Pattern) -> bool:
         return pat.pattern in SSN_PATTERNS
+
+    def _is_ein_pat(pat: re.Pattern) -> bool:
+        return pat.pattern in EIN_PATTERNS
 
     def _passes_ssn_context_text(full_text: str, m: re.Match) -> bool:
         window = full_text[max(0, m.start()-60): m.end()+60]
         return bool(SSN_CONTEXT_WORDS.search(window))
 
+    def _passes_ein_context_text(full_text: str, m: re.Match) -> bool:
+        window = full_text[max(0, m.start()-60): m.end()+60]
+        return bool(EIN_CONTEXT_WORDS.search(window))
+
     try:
         doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     except Exception:
+        logger.warning("redact_pdf_bytes: PDF failed to open cleanly — attempting repair")
         repaired = _repair_pdf_if_needed(pdf_bytes)
         doc = fitz.open(stream=repaired, filetype="pdf")
+
+    logger.info("redact_pdf_bytes: %d page(s), %d pattern(s), keep_last_digits=%d",
+                doc.page_count, len(patterns), keep_last_digits)
 
     for page_index in range(doc.page_count):
         page = doc.load_page(page_index)
@@ -302,6 +353,12 @@ def redact_pdf_bytes(
                                 hi = min(len(words), idx+7)
                                 snippet = " ".join(wd for wd in words[lo:hi] if wd)
                                 if not SSN_CONTEXT_WORDS.search(snippet or ""):
+                                    continue
+                            if _is_ein_pat(pat):
+                                lo = max(0, idx-6)
+                                hi = min(len(words), idx+7)
+                                snippet = " ".join(wd for wd in words[lo:hi] if wd)
+                                if not EIN_CONTEXT_WORDS.search(snippet or ""):
                                     continue
                             if keep_last_digits > 0:
                                 num_digits = sum(ch.isdigit() for ch in word)
@@ -363,6 +420,8 @@ def redact_pdf_bytes(
                         continue
                     if require_ssn_context and _is_ssn_pat(pat) and not _passes_ssn_context_text(page_text, m):
                         continue
+                    if _is_ein_pat(pat) and not _passes_ein_context_text(page_text, m):
+                        continue
                     if keep_last_digits > 0:
                         prefix = prefix_excluding_last_n_digits(s, keep_last_digits)
                         if prefix:
@@ -418,6 +477,8 @@ def redact_pdf_bytes(
 
     out = doc.tobytes()
     doc.close()
+    logger.info("redact_pdf_bytes: done — %d hit(s) in %.2f s",
+                len(hits), time.monotonic() - _t0)
     return out, hits
 
 
@@ -442,6 +503,19 @@ def process_zip_bytes(
     """
     redacted_files: List[Tuple[str, bytes]] = []
     audit_hits: List[Hit] = []
+    # failures maps filename → reason for files that could not be redacted.
+    # Failed files are omitted from the output ZIP (the batch never aborts).
+    failures: Dict[str, str] = {}
+
+    _batch_t0 = time.monotonic()
+
+    with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zin:
+        _all_entries = [
+            i.filename for i in zin.infolist()
+            if not i.is_dir() and not _is_mac_resource_junk(i.filename)
+        ]
+    logger.info("process_zip_bytes: %d file(s) to redact, %d pattern(s)",
+                len(_all_entries), len(patterns))
 
     with zipfile.ZipFile(io.BytesIO(zip_bytes), 'r') as zin:
         for rel_path, data in _iter_zip(zin, {".pdf", ".jpg", ".jpeg", ".png"}):
@@ -460,17 +534,45 @@ def process_zip_bytes(
                 out_name = str(Path(rel_path).with_suffix(".pdf"))
                 redacted_files.append((out_name, red_pdf))
             except Exception as e:
-                msg = f"Failed to process {rel_path}: {e}"
-                redacted_files.append((f"_errors/{rel_path}.txt".replace('..', '.'), msg.encode("utf-8")))
+                # Per-file failure: record and continue — don't abort the batch.
+                reason = f"Redaction failed: {type(e).__name__}"
+                failures[rel_path] = reason
+                logger.warning("process_zip_bytes: failed to redact '%s' — %s", rel_path, reason)
+
+    # Build the audit report. Each record captures what was found and where,
+    # but never the actual matched text (SSNs and other PII must not appear
+    # in the audit file — only pattern name, file, and page number).
+    # Records are grouped by (file, page, pattern) to keep the report compact.
+    audit_records: Dict[tuple, Dict] = {}
+    for h in audit_hits:
+        key = (h.rel_path, h.page_num, h.pattern)
+        if key in audit_records:
+            audit_records[key]["match_count"] += 1
+        else:
+            audit_records[key] = {
+                "file": h.rel_path,
+                "page": h.page_num,
+                "pattern": h.pattern,
+                "match_count": 1,
+            }
+    audit_json = json.dumps(list(audit_records.values()), indent=2).encode("utf-8")
 
     out_buf = io.BytesIO()
     with zipfile.ZipFile(out_buf, 'w', compression=zipfile.ZIP_DEFLATED) as zout:
         for arcname, data in redacted_files:
             zout.writestr(arcname, data)
+        # Include the audit report in the output ZIP so attorneys have a record
+        # of what was redacted without needing to open each individual PDF.
+        zout.writestr("_redaction_audit.json", audit_json)
 
+    logger.info(
+        "process_zip_bytes: done — %d file(s) redacted, %d failure(s), %d total hit(s) in %.2f s",
+        len(redacted_files), len(failures), len(audit_hits), time.monotonic() - _batch_t0,
+    )
     return out_buf.getvalue(), audit_hits, {
         "files_processed": len(redacted_files),
         "total_hits": len(audit_hits),
         "keep_last_digits": keep_last_digits,
         "require_ssn_context": require_ssn_context,
+        "failures": failures,
     }

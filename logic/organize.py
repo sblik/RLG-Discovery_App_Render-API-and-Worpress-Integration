@@ -8,12 +8,15 @@ from __future__ import annotations
 
 import logging
 import tempfile
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
-from typing import List, Tuple
+from typing import Dict, List, Tuple
 
 from .utils import _zip_dir
 from .dates import extract_year_cascading
+
+logger = logging.getLogger(__name__)
 
 
 def organize_by_year(
@@ -22,7 +25,7 @@ def organize_by_year(
     max_year: int,
     year_policy: str,
     unknown_folder: str
-) -> bytes:
+) -> tuple:
     """
     Organize files by year detected from filename, metadata, or content.
 
@@ -34,9 +37,18 @@ def organize_by_year(
         unknown_folder: Folder name for files with no detectable year
 
     Returns:
-        ZIP file bytes containing organized folder structure
+        Tuple of (zip_bytes, failures) where failures maps filename → reason
+        for any file that could not be placed due to an unexpected error.
+        Note: files with no detectable year are placed in unknown_folder and
+        are NOT counted as failures — that is normal, expected behaviour.
     """
-    logger = logging.getLogger(__name__)
+    logger.info("organize_by_year: %d file(s), policy=%r, year range %d–%d",
+                len(files), year_policy, min_year, max_year)
+
+    # failures only records genuine processing errors, not "no year found"
+    # (which is handled gracefully by placing the file in unknown_folder).
+    failures: Dict[str, str] = {}
+    folder_counts: Counter = Counter()
 
     with tempfile.TemporaryDirectory() as tmp_dir:
         tmp = Path(tmp_dir)
@@ -54,16 +66,20 @@ def organize_by_year(
                     year_policy
                 )
 
-                logger.debug(
-                    f"File '{display_name}': year={result.year}, "
-                    f"method={result.method}, reason={result.reason}"
-                )
-
                 folder = str(result.year) if result.year is not None else unknown_folder
+                logger.info(
+                    "organize: '%s' → folder='%s' (method=%s)",
+                    display_name, folder, result.method,
+                )
             except Exception as e:
-                logger.warning(f"Error extracting year from '{display_name}': {e}")
+                # Unexpected error during year extraction — place in unknown
+                # folder so the file still makes it into the output, and record
+                # the failure so the caller can report it via X-Failed-Files.
+                logger.warning("organize: year extraction error for '%s': %s", display_name, e)
+                failures[display_name] = f"Year extraction error: {type(e).__name__}"
                 folder = unknown_folder
 
+            folder_counts[folder] += 1
             target_dir = out_root / folder
             target_dir.mkdir(parents=True, exist_ok=True)
             dest = target_dir / Path(display_name).name
@@ -73,4 +89,8 @@ def organize_by_year(
                 i += 1
             dest.write_bytes(data)
 
-        return _zip_dir(out_root)
+        logger.info(
+            "organize_by_year: complete — %s, failures: %d",
+            dict(sorted(folder_counts.items())), len(failures),
+        )
+        return _zip_dir(out_root), failures
