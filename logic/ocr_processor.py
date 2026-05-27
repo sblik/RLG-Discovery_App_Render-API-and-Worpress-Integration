@@ -617,11 +617,16 @@ def process_file_pairs(
                 continue
             try:
                 logger.info("process_file_pairs: OCR-ing '%s'", name)
-                results.append(_ocr_one(name, data))
+                results.append(_ocr_one(name, data, failed=failed))
             except Exception as e:
                 failures[name] = f"OCR failed: {type(e).__name__}"
                 logger.exception("OCR failed for %s", name)
 
+        # _ocr_one swallows engine errors and passes the file through unchanged;
+        # fold those swallowed failures into the failures map so they are
+        # reported in X-Failed-Files instead of vanishing silently.
+        for _n in failed:
+            failures.setdefault(_n, "OCR failed - file passed through unprocessed")
         logger.info(
             "process_file_pairs: done — %d processed, %d already searchable, %d failed",
             len(results) - len(already_searchable), len(already_searchable), len(failures),
@@ -658,7 +663,7 @@ def process_file_pairs(
 
                 if ext == ".pdf":
                     # Pre-labeled PDF — OCR text-less pages, leave stamp alone.
-                    out_name, out_data = _ocr_one(name, data)
+                    out_name, out_data = _ocr_one(name, data, failed=failed)
                     updated_records.append(sidecar_entry)
                     results.append((out_name, out_data))
                     continue
@@ -668,7 +673,7 @@ def process_file_pairs(
                     # OCR'd, so redraw the sidecar's authoritative label as
                     # native PDF text. /index reads that cleanly.
                     out_name, out_data = _ocr_one(
-                        name, data, label=first_label, label_spec=spec,
+                        name, data, label=first_label, label_spec=spec, failed=failed,
                     )
                     updated_records.append(_rekey_record_for_ext_change(sidecar_entry, out_name))
                     results.append((out_name, out_data))
@@ -689,7 +694,7 @@ def process_file_pairs(
                 first_label = labels[0] if labels else ""
                 last_label = labels[-1] if labels else ""
                 out_name, out_data = _ocr_one(
-                    name, data, labels=labels, label_spec=spec,
+                    name, data, labels=labels, label_spec=spec, failed=failed,
                 )
                 results.append((out_name, out_data))
                 updated_records.append(_make_record(out_name, first_label, last_label, pages))
@@ -699,7 +704,7 @@ def process_file_pairs(
             if ext in OCR_IMAGE_EXTS:
                 label = _format_label(prefix, next_num, digits, with_space=True)
                 out_name, out_data = _ocr_one(
-                    name, data, label=label, label_spec=spec,
+                    name, data, label=label, label_spec=spec, failed=failed,
                 )
                 results.append((out_name, out_data))
                 updated_records.append(_make_record(out_name, label, label, 1))
@@ -717,6 +722,11 @@ def process_file_pairs(
     # Re-emit updated sidecar at the zip root
     sidecar_bytes = json.dumps(updated_records, ensure_ascii=False, indent=2).encode("utf-8")
     results.append((BATES_RECORDS_SIDECAR, sidecar_bytes))
+
+    # Fold swallowed _ocr_one pass-through failures into the failures map so
+    # they are reported in X-Failed-Files instead of vanishing silently.
+    for _n in failed:
+        failures.setdefault(_n, "OCR failed - file passed through unprocessed")
 
     # Gap-fill mode processes every file in the sidecar regardless of whether
     # it already had a text layer (because it may also need a Bates label drawn

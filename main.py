@@ -110,10 +110,14 @@ def _failures_header(failures: dict) -> dict:
     Returns an empty dict when there are no failures (header is omitted).
     Value is compact JSON so the WordPress plugin can parse it directly:
     e.g. '{"corrupt.pdf": "OCR failed: ValueError"}'
+
+    ensure_ascii=True is required: HTTP header values must be Latin-1 encodable,
+    so any non-ASCII filename or reason (e.g. "café.pdf") must be \\uXXXX-escaped
+    or the response raises UnicodeEncodeError. JSON.parse on the client restores it.
     """
     if not failures:
         return {}
-    return {"X-Failed-Files": json.dumps(failures, ensure_ascii=False)}
+    return {"X-Failed-Files": json.dumps(failures, ensure_ascii=True)}
 
 
 def _output_name(files: list, suffix: str, ext: str = ".zip") -> str:

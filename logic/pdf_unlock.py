@@ -84,8 +84,6 @@ def unlock_pdfs(
     failures: Dict[str, str] = {}
 
     zip_buffer = io.BytesIO()
-    succeeded = 0
-    failures = []
     with zipfile.ZipFile(zip_buffer, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         for fname, data in files:
             if _is_mac_resource_junk(fname):
