@@ -727,7 +727,7 @@ function rlg_shortcode_pipeline($atts) {
          =================================================================== -->
     <style>
     /* ---- Outer shell ---- */
-    .rlg-pipeline-tool { max-width: 860px; margin: 0 auto; font-family: inherit; position: relative; }
+    .rlg-pipeline-tool { max-width: 860px; margin: 2em auto; font-family: inherit; position: relative; }
     .rlg-pl-header h3  { margin: 0 0 4px; }
     .rlg-pl-header p   { color: #555; margin: 0 0 20px; }
     .rlg-pl-hint       { color: #6b7280; font-size: 12px; margin: 0 0 8px; font-style: italic; }
