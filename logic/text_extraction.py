@@ -7,9 +7,12 @@ Uses PyMuPDF for native text extraction and OnnxTR as OCR fallback.
 from __future__ import annotations
 
 import io
+import logging
 from PIL import Image, ImageOps
 
 from PyPDF2 import PdfReader
+
+logger = logging.getLogger(__name__)
 
 # Optional: PyMuPDF
 try:
@@ -50,6 +53,10 @@ def _pdf_page_text_blocks(pdf_bytes: bytes, page_index_zero: int) -> list:
                     return texts
                 # Fallback: OCR (returns one string — can't split into blocks)
                 if OCR_AVAILABLE:
+                    logger.debug(
+                        "_pdf_page_text_blocks: page %d has no native text — falling back to OCR",
+                        page_index_zero,
+                    )
                     page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
                     ocr_txt = ocr_single_page_text(page_img)
                     del page_img
@@ -126,6 +133,10 @@ def _pdf_page_text_or_ocr(pdf_bytes: bytes, page_index_zero: int) -> str:
                     return txt
                 # Fallback: OCR via OnnxTR
                 if OCR_AVAILABLE:
+                    logger.debug(
+                        "_pdf_page_text_or_ocr: page %d has no native text — falling back to OCR",
+                        page_index_zero,
+                    )
                     page_img = pdf_page_to_numpy(page, dpi=OCR_DPI)
                     ocr_txt = ocr_single_page_text(page_img)
                     del page_img

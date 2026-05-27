@@ -72,12 +72,14 @@
                 $('#last-bates-info').html('<span style="color:#d97706;">&#9888; No Bates output yet. Run Bates Labeler first.</span>').show();
             }
         }
-        var splash = document.getElementById('rlg-splash')
-        if (splash) {
+        // Handle every splash overlay on the page (the tools container and the
+        // pipeline each render their own) rather than a single id. Each fades and
+        // removes itself independently once its image has loaded.
+        document.querySelectorAll('.rlg-splash-overlay').forEach(function(splash) {
             var splashImg = splash.querySelector('img');
             var startFadeTimer = function() {
                 setTimeout(function() {
-                    splash.classList.add('rlg-splash-fade-out')
+                    splash.classList.add('rlg-splash-fade-out');
                 }, 2400);
             };
 
@@ -91,10 +93,12 @@
             }
 
             splash.addEventListener('animationend', function() {
-                splash.parentElement.classList.remove('rlg-splash-active');
+                if (splash.parentElement) {
+                    splash.parentElement.classList.remove('rlg-splash-active');
+                }
                 splash.remove();
-            })
-        }
+            });
+        });
     });
 
     $(document).on('click', '.rlg-color-swatch', function() {

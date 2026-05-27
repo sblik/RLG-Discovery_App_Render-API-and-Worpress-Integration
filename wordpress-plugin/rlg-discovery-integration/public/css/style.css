@@ -1062,6 +1062,12 @@ section.rlg-page-options {
     will-change: opacity;
 }
 
+/* Page-level splash: fixed full-viewport overlay (one per page), above site chrome. */
+.rlg-splash-fixed {
+    position: fixed;
+    z-index: 99999;
+}
+
 .rlg-splash-overlay img {
     max-width: 90%;
     max-height: 80%;

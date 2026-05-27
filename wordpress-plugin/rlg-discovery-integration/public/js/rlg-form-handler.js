@@ -14,10 +14,17 @@
         e.preventDefault();
 
         var $form = $(this);
+
+        // The pipeline form shares the .rlg-discovery-form class but has no
+        // data-endpoint — it is driven entirely by rlg-pipeline.js. Bail out so
+        // this generic handler doesn't fire a bogus "<apiUrl>undefined" request
+        // (and doesn't hijack/disable the pipeline's own submit button).
+        var endpoint = $form.data('endpoint');
+        if (!endpoint) return;
+
         var $status = $form.find('.rlg-status');
         var $btn = $form.find('button[type="submit"]');
 
-        var endpoint = $form.data('endpoint');
         var apiUrl = RLG.getApiUrl() + endpoint;
 
         var formData = new FormData(this);
@@ -48,8 +55,18 @@
         var controller = new AbortController();
         var timeoutId = setTimeout(function () { controller.abort(); }, 120000);
 
+        // Build request headers. X-API-Key is always included so the server
+        // can validate requests. If the key is blank (local dev / auth disabled),
+        // the header is sent empty and the server allows it through.
+        var requestHeaders = {};
+        var apiKey = RLG.getApiKey();
+        if (apiKey) {
+            requestHeaders['X-API-Key'] = apiKey;
+        }
+
         fetch(apiUrl, {
             method: 'POST',
+            headers: requestHeaders,
             body: formData,
             signal: controller.signal
         })
@@ -73,11 +90,17 @@
 
                 var contentType = response.headers.get('Content-Type') || '';
                 var disposition = response.headers.get('Content-Disposition') || '';
-                var unlock_count = response.headers.get('X-Unlock-Failed-Count') || '';
-                var bates_failed = response.headers.get('X-Bates-Failed-Count') || '';
-                var ocr_failed = response.headers.get('X-OCR-Failed-Count') || '';
+                // Per-file failures are reported by the server in the X-Failed-Files
+                // header as a JSON object map {filename: reason} (omitted entirely
+                // when nothing failed). Parse defensively.
+                var failedFiles = [];
+                var failedHeader = response.headers.get('X-Failed-Files') || '';
+                if (failedHeader) {
+                    try { failedFiles = JSON.parse(failedHeader) || []; }
+                    catch (e) { failedFiles = []; }
+                }
                 return response.blob().then(function(blob) {
-                    return { blob: blob, contentType: contentType, disposition: disposition, unlock_count: unlock_count, bates_failed: bates_failed, ocr_failed: ocr_failed };
+                    return { blob: blob, contentType: contentType, disposition: disposition, failedFiles: failedFiles };
                 });
 
             })
@@ -86,6 +109,36 @@
                 var serverFilename = null;
                 var match = result.disposition.match(/filename="?([^";]+)"?/);
                 if (match) serverFilename = match[1];
+
+                // Build a per-file failure warning from the server's X-Failed-Files
+                // header. The server sends a JSON object map {filename: reason}; we
+                // also tolerate an array of {filename, error}. Returns '' when empty.
+                function failureNotice(failed) {
+                    var pairs = [];
+                    if (Array.isArray(failed)) {
+                        failed.forEach(function(f) {
+                            pairs.push([(f && (f.filename || f.name)) || 'Unknown file',
+                                        (f && (f.error || f.reason)) || 'could not be processed']);
+                        });
+                    } else if (failed && typeof failed === 'object') {
+                        Object.keys(failed).forEach(function(name) {
+                            pairs.push([name, failed[name] || 'could not be processed']);
+                        });
+                    }
+                    if (!pairs.length) return '';
+                    function esc(s) {
+                        return String(s).replace(/[&<>"]/g, function(c) {
+                            return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c];
+                        });
+                    }
+                    var items = pairs.map(function(p) {
+                        return '<li>' + esc(p[0]) + ' — ' + esc(p[1]) + '</li>';
+                    }).join('');
+                    return '<div class="rlg-status warning" style="margin-top:8px;padding:8px 12px;' +
+                           'background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;color:#92400e;">' +
+                           '<strong>' + pairs.length + ' file(s) could not be processed:</strong>' +
+                           '<ul style="margin:6px 0 0;padding-left:20px;">' + items + '</ul></div>';
+                }
 
                 // Shared download trigger — runs after /bates finishes its
                 // async sidecar work, and synchronously for other endpoints.
@@ -223,21 +276,18 @@
                         // Generate and show the index preview
                         RLG.generateBatesIndexPreview();
 
-                        var batesFailedN = parseInt(result.bates_failed, 10) || 0;
-                        if (batesFailedN > 0) {
-                            $status.html('<span class="rlg-status success">Done. ' + batesFailedN + ' file(s) couldn\'t be labeled.</span>');
+                        var batesNotice = failureNotice(result.failedFiles);
+                        if (batesNotice) {
+                            $status.html('<span class="rlg-status success">Done — download started.</span>' + batesNotice);
                         } else {
                             $status.html('<span class="rlg-status success">Complete! Download started.</span>');
                         }
                         triggerDownload();
                     });
                 } else {
-                    var failedN = parseInt(result.unlock_count, 10) || 0;
-                    var ocrFailedN = parseInt(result.ocr_failed, 10) || 0;
-                    if (endpoint === '/unlock' && failedN > 0) {
-                        $status.html('<span class="rlg-status success">Done. ' + failedN + ' file(s) couldn\'t be unlocked.</span>');
-                    } else if (endpoint ==='/ocr' && ocrFailedN > 0) {
-                        $status.html('<span class="rlg-status success">Done. ' + ocrFailedN + ' file(s) couldn\'t be made searchable.</span>');
+                    var notice = failureNotice(result.failedFiles);
+                    if (notice) {
+                        $status.html('<span class="rlg-status success">Done — download started.</span>' + notice);
                     } else {
                         $status.html('<span class="rlg-status success">Success! Download started.</span>');
                     }

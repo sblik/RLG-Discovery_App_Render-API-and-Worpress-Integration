@@ -6,11 +6,14 @@ Contains: Functions to create formatted Excel discovery indexes.
 from __future__ import annotations
 
 import io
+import logging
 from datetime import datetime
 
 import pandas as pd
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
+
+logger = logging.getLogger(__name__)
 
 
 def build_discovery_xlsx(
@@ -38,6 +41,9 @@ def build_discovery_xlsx(
     Returns:
         Excel file bytes
     """
+    logger.info("build_discovery_xlsx: %d document(s), party=%r, title=%r",
+                len(df), party, title_text)
+
     PARTY_COLORS = {
         "Client": "FFEFFFF2",  # Light green
         "OP": "FFEDF7FF",  # Light blue
@@ -119,4 +125,5 @@ def build_discovery_xlsx(
     out = io.BytesIO()
     wb.save(out)
     out.seek(0)
+    logger.info("build_discovery_xlsx: spreadsheet built — %d data row(s) written", row - 4)
     return out.getvalue()
