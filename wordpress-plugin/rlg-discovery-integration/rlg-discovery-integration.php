@@ -2,7 +2,7 @@
 /**
  * Plugin Name: RLG Discovery Integration
  * Description: Integrates RLG Discovery Tools (Unlock, Organize, Bates, Index, Redact, OCR, Pipeline) via shortcodes.
- * Version: 1.9.1
+ * Version: 1.9.2
  * Author: RLG
  */
 
@@ -22,7 +22,7 @@ require_once RLG_DISCOVERY_PATH . 'public/shortcodes.php';
 
 // Enqueue Scripts & Styles
 function rlg_discovery_enqueue_scripts() {
-    $version = '1.9.1';
+    $version = '1.9.2';
     $js_path = RLG_DISCOVERY_URL . 'public/js/';
 
     // CSS
@@ -59,3 +59,38 @@ function rlg_discovery_enqueue_scripts() {
     ));
 }
 add_action('wp_enqueue_scripts', 'rlg_discovery_enqueue_scripts');
+
+// Single full-screen load splash, injected once at the top of <body> on any page
+// that contains a discovery shortcode. Rendering it here (rather than inside each
+// shortcode) guarantees exactly one splash when several tools and the pipeline
+// share a page, and keeps it at body level so its fixed positioning reliably
+// covers the viewport (a shortcode container can sit inside a transformed
+// page-builder column). rlg-ui-controls.js fades and removes it on load.
+function rlg_discovery_render_splash() {
+    if (!is_singular()) {
+        return;
+    }
+    $post = get_post();
+    if (!$post) {
+        return;
+    }
+    $shortcodes = array(
+        'rlg_pipeline', 'rlg_discovery_tools', 'rlg_unlock', 'rlg_organize',
+        'rlg_ocr', 'rlg_redact', 'rlg_bates', 'rlg_index',
+    );
+    $present = false;
+    foreach ($shortcodes as $tag) {
+        if (has_shortcode($post->post_content, $tag)) {
+            $present = true;
+            break;
+        }
+    }
+    if (!$present) {
+        return;
+    }
+    printf(
+        '<div class="rlg-splash-overlay rlg-splash-fixed" id="rlg-splash"><img src="%spublic/images/SCOUT.png" alt="Scout"></div>',
+        esc_url(RLG_DISCOVERY_URL)
+    );
+}
+add_action('wp_body_open', 'rlg_discovery_render_splash');
