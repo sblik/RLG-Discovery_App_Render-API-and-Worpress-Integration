@@ -79,9 +79,19 @@ app = FastAPI(
     version=__version__
 )
 
+# CORS allowed origins are read from the ALLOWED_ORIGINS env var (comma-separated)
+# so staging/preview deployments can use their own WordPress domain without a code
+# change. Unset -> defaults to the production origin, so live behavior is unchanged.
+# Staging Render service sets ALLOWED_ORIGINS to its own WordPress origin.
+_origins_env = os.environ.get("ALLOWED_ORIGINS", "").strip()
+_allowed_origins = (
+    [o.strip() for o in _origins_env.split(",") if o.strip()]
+    or ["https://ramagelawportal.com", "https://www.ramagelawportal.com"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://ramagelawportal.com", "https://www.ramagelawportal.com"],
+    allow_origins=_allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
