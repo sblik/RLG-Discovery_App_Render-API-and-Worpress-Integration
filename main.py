@@ -1082,6 +1082,18 @@ async def pipeline_run_endpoint(
     password_csv: str = Form(""),             # CSV text: filename,password
     # --- OCR stage ---
     skip_ocr: bool = Form(False),
+    # --- Redact stage ---
+    skip_redact: bool = Form(True),           # Skip by default if no patterns
+    presets: List[str] = Form([]),
+    regex_patterns: Optional[str] = Form(None),
+    literal_patterns: Optional[str] = Form(None),
+    keep_last_digits: int = Form(0),
+    # --- Organize stage ---
+    skip_organize: bool = Form(False),
+    min_year: int = Form(1900),
+    max_year: int = Form(2100),
+    year_policy: str = Form("earliest"),      # "earliest" | "latest" | "filename"
+    unknown_folder: str = Form("Unknown"),
     # --- Bates stage ---
     skip_bates: bool = Form(False),
     prefix: str = Form(""),
@@ -1096,12 +1108,6 @@ async def pipeline_run_endpoint(
     color_hex: str = Form("#000000"),
     left_punch_margin: float = Form(0.0),
     border_all_pt: float = Form(0.0),
-    # --- Redact stage ---
-    skip_redact: bool = Form(True),           # Skip by default if no patterns
-    presets: List[str] = Form([]),
-    regex_patterns: Optional[str] = Form(None),
-    literal_patterns: Optional[str] = Form(None),
-    keep_last_digits: int = Form(0),
     # --- Index settings (forwarded to /pipeline/finalize) ---
     party: str = Form("Client"),
     title_text: str = Form("CLIENT NAME - DOCUMENTS"),
@@ -1109,12 +1115,14 @@ async def pipeline_run_endpoint(
     passwords_json: str = Form("{}"),         # JSON: {"filename": "password", ...}
 ) -> StreamingResponse:
     """
-    Phase 1 of the pipeline: Unlock → OCR → Bates → Redact → review_ready.
+    Phase 1 of the pipeline: Unlock → OCR → Redact → Organize → Bates → review_ready.
 
     Retrieves staged files from /pipeline/scan using ``scan_id``, runs each
     enabled stage in order, then emits a ``review_ready`` event and ends the
     stream.  The server saves the intermediate file state under a new run_id
     in ``_review_store`` for the attorney to inspect before finalizing.
+
+    Stage order: Unlock → OCR → Redact → Organize → Bates
 
     Response: ``text/event-stream``
 
@@ -1162,12 +1170,13 @@ async def pipeline_run_endpoint(
     total_kb = sum(len(b) for _, b in file_pairs) / 1024
     logger.info(
         "POST /pipeline/run: run_id=%s, scan_id=%s, %d file(s), %.1f KB — "
-        "stages: unlock=%s ocr=%s bates=%s redact=%s",
+        "stages: unlock=%s ocr=%s redact=%s organize=%s bates=%s",
         run_id, scan_id, len(file_pairs), total_kb,
         "skip" if skip_unlock else "run",
         "skip" if skip_ocr else "run",
-        "skip" if skip_bates else "run",
         "skip" if skip_redact else "run",
+        "skip" if skip_organize else "run",
+        "skip" if skip_bates else "run",
     )
 
     # Validate redaction patterns before starting the stream so a bad pattern
@@ -1209,14 +1218,15 @@ async def pipeline_run_endpoint(
     report.record_settings({
         "prefix": prefix, "start_num": start_num, "digits": digits, "zone": zone,
         "skip_unlock": skip_unlock, "skip_ocr": skip_ocr,
-        "skip_bates": skip_bates, "skip_redact": skip_redact, "party": party,
+        "skip_redact": skip_redact, "skip_organize": skip_organize,
+        "skip_bates": skip_bates, "party": party,
     })
 
     # -------------------------------------------------------------------------
     # SSE generator — Phase 1 stages
     # -------------------------------------------------------------------------
     async def _generate() -> AsyncGenerator[str, None]:
-        """Yield SSE-formatted progress events for Phase 1 (Unlock→OCR→Bates→Redact)."""
+        """Yield SSE-formatted progress events for Phase 1 (Unlock→OCR→Redact→Organize→Bates)."""
         nonlocal file_pairs
 
         # === PRE-FLIGHT: validate interactive passwords before any heavy work ===
@@ -1356,7 +1366,116 @@ async def pipeline_run_endpoint(
                 yield _sse({"type": "stage_error", "stage": "ocr",
                             "label": f"OCR error: {type(exc).__name__} — continuing"})
 
-        # === STAGE 3: BATES ==================================================
+        # === STAGE 3: REDACT =================================================
+        # audit_bytes holds the _redaction_audit.json written by process_zip_bytes.
+        # It is accumulated across re-redact passes and written to the final ZIP.
+        audit_bytes: Optional[bytes] = None
+        total_hits = 0
+        hits_by_file: Dict[str, int] = {}
+
+        if skip_redact or patterns is None:
+            for fname, _ in file_pairs:
+                report.record_file_ok(fname, "redact")
+            yield _sse({"type": "stage_skip", "stage": "redact",
+                        "label": "Redaction skipped — review before finalizing"})
+        else:
+            _stage_t0 = time.monotonic()
+            yield _sse({"type": "stage_start", "stage": "redact",
+                        "label": "Applying redactions..."})
+            report.start_stage("redact")
+            try:
+                in_buf = io.BytesIO()
+                with zipfile.ZipFile(in_buf, "w", zipfile.ZIP_DEFLATED) as zout:
+                    for fname, data in file_pairs:
+                        zout.writestr(fname, data)
+
+                out_zip, hits, summary = await asyncio.to_thread(
+                    logic.process_zip_bytes,
+                    in_buf.getvalue(), patterns, keep_last_digits,
+                    require_ssn_context=True,
+                )
+                total_hits = len(hits)
+                redact_failures = summary.get("failures", {})
+                # Build per-file hit count directly from the Hit objects returned
+                # by process_zip_bytes (summary dict has no "by_file" key).
+                hits_by_file: Dict[str, int] = {}
+                for _h in hits:
+                    hits_by_file[_h.rel_path] = hits_by_file.get(_h.rel_path, 0) + 1
+
+                with zipfile.ZipFile(io.BytesIO(out_zip)) as zf:
+                    new_pairs = []
+                    for info in zf.infolist():
+                        if info.is_dir() or logic._is_mac_resource_junk(info.filename):
+                            continue
+                        if info.filename.endswith("_redaction_audit.json"):
+                            audit_bytes = zf.read(info)
+                        else:
+                            new_pairs.append((info.filename, zf.read(info)))
+                    file_pairs = new_pairs
+
+                report.apply_failures("redact", redact_failures)
+                report.end_stage("redact")
+                _elapsed = time.monotonic() - _stage_t0
+                logger.info("Pipeline [redact] complete in %.1f s — %d hit(s), %d failure(s)",
+                            _elapsed, total_hits, len(redact_failures))
+                yield _sse({"type": "stage_complete", "stage": "redact",
+                            "label": f"Redaction complete — {total_hits} match(es) found",
+                            "hits": total_hits, "failures": len(redact_failures),
+                            "elapsed_ms": int(_elapsed * 1000)})
+            except Exception as exc:
+                logger.exception("Pipeline [redact] stage failed in %.1f s", time.monotonic() - _stage_t0)
+                report.end_stage("redact")
+                yield _sse({"type": "stage_error", "stage": "redact",
+                            "label": f"Redact error: {type(exc).__name__} — continuing"})
+
+        # === STAGE 4: ORGANIZE ===============================================
+        # Sort files into year-named folders (e.g. 2021/, 2022/, Unknown/).
+        # Runs after redaction so sensitive content is already removed before
+        # folder names are assigned.  The resulting folder structure carries
+        # forward into Bates stamping and the final index.
+        if skip_organize:
+            for fname, _ in file_pairs:
+                report.record_file_ok(fname, "organize")
+            yield _sse({"type": "stage_skip", "stage": "organize",
+                        "label": "Organize skipped"})
+        else:
+            _stage_t0 = time.monotonic()
+            yield _sse({"type": "stage_start", "stage": "organize",
+                        "label": "Organizing files into year folders..."})
+            report.start_stage("organize")
+            try:
+                org_zip_bytes, org_failures = await asyncio.to_thread(
+                    logic.organize_by_year,
+                    file_pairs, min_year, max_year, year_policy, unknown_folder,
+                )
+                # Unpack the ZIP back into (filename, bytes) pairs so subsequent
+                # stages (Bates, Index) see the new folder-prefixed filenames.
+                with zipfile.ZipFile(io.BytesIO(org_zip_bytes)) as zf:
+                    new_pairs = []
+                    for info in zf.infolist():
+                        if not info.is_dir() and not logic._is_mac_resource_junk(info.filename):
+                            new_pairs.append((info.filename, zf.read(info)))
+                    file_pairs = new_pairs
+
+                report.apply_failures("organize", org_failures)
+                for fname, _ in file_pairs:
+                    if fname not in org_failures:
+                        report.record_file_ok(fname, "organize")
+                report.end_stage("organize")
+                _elapsed = time.monotonic() - _stage_t0
+                logger.info("Pipeline [organize] complete in %.1f s — %d file(s), %d failure(s)",
+                            _elapsed, len(file_pairs), len(org_failures))
+                yield _sse({"type": "stage_complete", "stage": "organize",
+                            "label": f"Organize complete — {len(file_pairs)} file(s) sorted",
+                            "failures": len(org_failures),
+                            "elapsed_ms": int(_elapsed * 1000)})
+            except Exception as exc:
+                logger.exception("Pipeline [organize] stage failed in %.1f s", time.monotonic() - _stage_t0)
+                report.end_stage("organize")
+                yield _sse({"type": "stage_error", "stage": "organize",
+                            "label": f"Organize error: {type(exc).__name__} — continuing"})
+
+        # === STAGE 5: BATES ==================================================
         bates_records: list = []
         last_bates_num: int = start_num - 1
 
@@ -1426,68 +1545,6 @@ async def pipeline_run_endpoint(
                         "label": f"Bates complete — last number: {last_bates_num}",
                         "last_num": last_bates_num, "failures": len(bates_failures),
                         "elapsed_ms": int(_elapsed * 1000)})
-
-        # === STAGE 4: REDACT =================================================
-        # audit_bytes holds the _redaction_audit.json written by process_zip_bytes.
-        # It is accumulated across re-redact passes and written to the final ZIP.
-        audit_bytes: Optional[bytes] = None
-        total_hits = 0
-        hits_by_file: Dict[str, int] = {}
-
-        if skip_redact or patterns is None:
-            for fname, _ in file_pairs:
-                report.record_file_ok(fname, "redact")
-            yield _sse({"type": "stage_skip", "stage": "redact",
-                        "label": "Redaction skipped — review before finalizing"})
-        else:
-            _stage_t0 = time.monotonic()
-            yield _sse({"type": "stage_start", "stage": "redact",
-                        "label": "Applying redactions..."})
-            report.start_stage("redact")
-            try:
-                in_buf = io.BytesIO()
-                with zipfile.ZipFile(in_buf, "w", zipfile.ZIP_DEFLATED) as zout:
-                    for fname, data in file_pairs:
-                        zout.writestr(fname, data)
-
-                out_zip, hits, summary = await asyncio.to_thread(
-                    logic.process_zip_bytes,
-                    in_buf.getvalue(), patterns, keep_last_digits,
-                    require_ssn_context=True,
-                )
-                total_hits = len(hits)
-                redact_failures = summary.get("failures", {})
-                # Build per-file hit count directly from the Hit objects returned
-                # by process_zip_bytes (summary dict has no "by_file" key).
-                hits_by_file: Dict[str, int] = {}
-                for _h in hits:
-                    hits_by_file[_h.rel_path] = hits_by_file.get(_h.rel_path, 0) + 1
-
-                with zipfile.ZipFile(io.BytesIO(out_zip)) as zf:
-                    new_pairs = []
-                    for info in zf.infolist():
-                        if info.is_dir() or logic._is_mac_resource_junk(info.filename):
-                            continue
-                        if info.filename.endswith("_redaction_audit.json"):
-                            audit_bytes = zf.read(info)
-                        else:
-                            new_pairs.append((info.filename, zf.read(info)))
-                    file_pairs = new_pairs
-
-                report.apply_failures("redact", redact_failures)
-                report.end_stage("redact")
-                _elapsed = time.monotonic() - _stage_t0
-                logger.info("Pipeline [redact] complete in %.1f s — %d hit(s), %d failure(s)",
-                            _elapsed, total_hits, len(redact_failures))
-                yield _sse({"type": "stage_complete", "stage": "redact",
-                            "label": f"Redaction complete — {total_hits} match(es) found",
-                            "hits": total_hits, "failures": len(redact_failures),
-                            "elapsed_ms": int(_elapsed * 1000)})
-            except Exception as exc:
-                logger.exception("Pipeline [redact] stage failed in %.1f s", time.monotonic() - _stage_t0)
-                report.end_stage("redact")
-                yield _sse({"type": "stage_error", "stage": "redact",
-                            "label": f"Redact error: {type(exc).__name__} — continuing"})
 
         # === SAVE INTERMEDIATE STATE & EMIT review_ready =====================
         # The stream ends here. The attorney reviews the results in the UI,
