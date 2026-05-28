@@ -951,6 +951,13 @@ PIPELINE_SCAN_TTL   = 1800   # Staged files from /scan expire after 30 min
 PIPELINE_REVIEW_TTL = 3600   # Intermediate state from /run expires after 60 min
 PIPELINE_RUN_TTL    = 3600   # Completed output from /finalize expires after 60 min
 
+# Unique ID for this server process / container.  Logged on every store miss so
+# we can confirm whether Phase 1 and re-redact/finalize hit the same instance.
+# If the IDs differ in Render logs → multiple containers are running and the
+# fix is to ensure numInstances:1 in render.yaml (or migrate to DynamoDB).
+_INSTANCE_ID = uuid.uuid4().hex[:8]
+logger.info("Pipeline instance_id=%s  (in-memory store ready)", _INSTANCE_ID)
+
 # {scan_id: {"files": [(filename, bytes), ...], "expires": float}}
 _scan_store: Dict[str, dict] = {}
 
@@ -1570,9 +1577,9 @@ async def pipeline_run_endpoint(
         }
 
         logger.info(
-            "Pipeline run_id=%s: Phase 1 complete in %.1f s — "
+            "Pipeline instance=%s run_id=%s: Phase 1 complete in %.1f s — "
             "%d file(s), hits=%d, bates_range=%r",
-            run_id, time.monotonic() - _pipeline_t0,
+            _INSTANCE_ID, run_id, time.monotonic() - _pipeline_t0,
             len(file_pairs), total_hits, report.bates_range,
         )
         yield _sse({
@@ -1583,6 +1590,10 @@ async def pipeline_run_endpoint(
             "hits_by_file": hits_by_file,
             "total_files": len(file_pairs),
             "bates_range": report.bates_range,
+            # Diagnostic: lets Render logs show which container served Phase 1.
+            # If re-redact 404 logs a different instance_id, multiple containers
+            # are routing requests — fix is numInstances:1 in render.yaml.
+            "instance_id": _INSTANCE_ID,
         })
 
     return StreamingResponse(
@@ -1619,6 +1630,13 @@ async def pipeline_re_redact_endpoint(
     """
     review_entry = _review_store.get(run_id)
     if not review_entry:
+        # Diagnostic: log instance ID and store contents so we can confirm
+        # whether this is a multi-instance routing issue (different container
+        # than the one that ran Phase 1) or a genuine expiry.
+        logger.warning(
+            "re-redact 404: instance=%s run_id=%s  store_size=%d  store_keys=%s",
+            _INSTANCE_ID, run_id, len(_review_store), list(_review_store.keys()),
+        )
         raise HTTPException(
             status_code=404,
             detail=(
@@ -1744,6 +1762,10 @@ async def pipeline_finalize_endpoint(run_id: str) -> StreamingResponse:
     """
     review_entry = _review_store.get(run_id)
     if not review_entry:
+        logger.warning(
+            "finalize 404: instance=%s run_id=%s  store_size=%d  store_keys=%s",
+            _INSTANCE_ID, run_id, len(_review_store), list(_review_store.keys()),
+        )
         raise HTTPException(
             status_code=404,
             detail=(
