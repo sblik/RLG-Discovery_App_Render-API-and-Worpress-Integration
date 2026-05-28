@@ -447,8 +447,9 @@ function rlg_shortcode_pipeline($atts) {
 
         <div class="rlg-pl-header">
             <h3>All-in-One Processing</h3>
-            <p>Run the full document workflow in one guided session — Unlock, OCR,
-               Bates stamp, Redact, review, and generate the discovery index automatically.</p>
+            <p>Run the complete discovery workflow in one guided session —
+               Unlock, OCR, Redact, Organize, Bates stamp, then review and
+               generate the discovery index automatically.</p>
         </div>
 
         <!-- ===============================================================
@@ -468,16 +469,32 @@ function rlg_shortcode_pipeline($atts) {
              =============================================================== -->
         <form id="rlg-pipeline-form" class="rlg-discovery-form rlg-sectioned-form">
 
-            <!-- FILE UPLOAD ------------------------------------------------ -->
-            <div class="rlg-form-group rlg-divider">
-                <label>Upload PDFs, images, or ZIP</label>
+            <!-- FILE UPLOAD + OUTPUT FILENAME ------------------------------ -->
+            <div class="rlg-section-card rlg-pl-upload-card">
+                <label class="rlg-pl-upload-label">Upload PDFs, images, or ZIP</label>
                 <input type="file" name="files" multiple required
                        accept=".pdf,.zip,.jpg,.jpeg,.png,.tif,.tiff">
+                <div class="rlg-pl-output-row">
+                    <label for="pl-output-filename">
+                        Output File Name
+                        <span class="rlg-pl-optional">(optional)</span>
+                    </label>
+                    <div class="rlg-pl-filename-wrap">
+                        <input type="text" name="output_filename" id="pl-output-filename"
+                               placeholder="e.g. Jones_v_Marlow" maxlength="120">
+                        <span class="rlg-pl-filename-ext">.zip</span>
+                    </div>
+                    <p class="rlg-pl-hint">Customize the downloaded file name.
+                       Leave blank for a default name.</p>
+                </div>
             </div>
 
-            <!-- UNLOCK ----------------------------------------------------- -->
-            <section class="rlg-section-flex rlg-divider">
-                <h4>1 · Unlock</h4>
+            <!-- 1 · UNLOCK ------------------------------------------------- -->
+            <section class="rlg-section-card">
+                <div class="rlg-section-card-header">
+                    <span class="rlg-step-badge">1</span>
+                    <span class="rlg-step-title">Unlock</span>
+                </div>
                 <div class="rlg-form-group rlg-checkbox-toggle">
                     <label class="rlg-pl-toggle-label">
                         <input type="checkbox" name="enable_unlock" id="pl-enable-unlock"
@@ -502,9 +519,12 @@ function rlg_shortcode_pipeline($atts) {
                 </div>
             </section>
 
-            <!-- OCR -------------------------------------------------------- -->
-            <section class="rlg-section-flex rlg-divider">
-                <h4>2 · OCR</h4>
+            <!-- 2 · OCR ---------------------------------------------------- -->
+            <section class="rlg-section-card">
+                <div class="rlg-section-card-header">
+                    <span class="rlg-step-badge">2</span>
+                    <span class="rlg-step-title">OCR</span>
+                </div>
                 <div class="rlg-form-group">
                     <label class="rlg-pl-toggle-label">
                         <input type="checkbox" name="enable_ocr" id="pl-enable-ocr"
@@ -517,9 +537,123 @@ function rlg_shortcode_pipeline($atts) {
                 </div>
             </section>
 
-            <!-- BATES ------------------------------------------------------ -->
-            <section class="rlg-section-flex rlg-divider">
-                <h4>3 · Bates Stamp</h4>
+            <!-- 3 · REDACT ------------------------------------------------- -->
+            <section class="rlg-section-card">
+                <div class="rlg-section-card-header">
+                    <span class="rlg-step-badge">3</span>
+                    <span class="rlg-step-title">Redact</span>
+                </div>
+                <div class="rlg-form-group rlg-checkbox-toggle">
+                    <label class="rlg-pl-toggle-label">
+                        <input type="checkbox" name="enable_redact" id="pl-enable-redact"
+                               value="true">
+                        <span class="rlg-pl-toggle-switch"></span>
+                        Enable Redaction
+                    </label>
+                    <p class="rlg-pl-hint">You will be able to add more patterns in the
+                       Review step if anything is missed.</p>
+                </div>
+                <div class="rlg-pl-toggle-target" id="pl-redact-fields" style="display:none">
+                    <div class="rlg-form-group">
+                        <label>Presets</label>
+                        <div class="rlg-checkbox-group">
+                            <label><input type="checkbox" name="presets" value="SSN">
+                                Social Security Number (SSN)</label>
+                            <label><input type="checkbox" name="presets" value="EIN">
+                                Employer ID Number (EIN)</label>
+                            <label><input type="checkbox" name="presets" value="Credit Card">
+                                Credit Card Number</label>
+                            <label><input type="checkbox" name="presets" value="Date of Birth">
+                                Date of Birth (labeled)</label>
+                            <label><input type="checkbox" name="presets" value="Phone">
+                                Phone Number</label>
+                            <label><input type="checkbox" name="presets" value="Email">
+                                Email Address</label>
+                            <label><input type="checkbox" name="presets" value="Date">
+                                Date (MM/DD/YYYY and variants)</label>
+                            <label><input type="checkbox" name="presets" value="8-digit number">
+                                8-Digit Account / ID Number</label>
+                        </div>
+                    </div>
+                    <!-- Aggressive mode: context-free SSN / EIN -->
+                    <div class="rlg-form-group rlg-pl-aggressive-row">
+                        <label class="rlg-pl-toggle-label">
+                            <input type="checkbox" name="aggressive_redact"
+                                   id="pl-aggressive-redact" value="true">
+                            <span class="rlg-pl-toggle-switch rlg-toggle-warn"></span>
+                            Aggressive Mode
+                        </label>
+                        <p class="rlg-pl-hint">⚠ Redacts <strong>all</strong> 9-digit numbers and
+                           XX-XXXXXXX sequences regardless of surrounding context — use when
+                           SSN / EIN values appear without labels. May increase false positives.</p>
+                    </div>
+                    <div class="rlg-form-group">
+                        <label>Custom Regex
+                            <span class="rlg-pl-optional">(one per line)</span></label>
+                        <textarea name="regex_patterns" rows="3"
+                                  placeholder="e.g. \bACCT-\d{8}\b"></textarea>
+                    </div>
+                    <div class="rlg-form-group">
+                        <label>Literal Phrases
+                            <span class="rlg-pl-optional">(comma separated)</span></label>
+                        <input type="text" name="literal_patterns"
+                               placeholder="e.g. John Smith, 123 Main St">
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4 · ORGANIZE ----------------------------------------------- -->
+            <section class="rlg-section-card">
+                <div class="rlg-section-card-header">
+                    <span class="rlg-step-badge">4</span>
+                    <span class="rlg-step-title">Organize</span>
+                </div>
+                <div class="rlg-form-group rlg-checkbox-toggle">
+                    <label class="rlg-pl-toggle-label">
+                        <input type="checkbox" name="enable_organize" id="pl-enable-organize"
+                               value="true" checked>
+                        <span class="rlg-pl-toggle-switch"></span>
+                        Enable Organize
+                    </label>
+                    <p class="rlg-pl-hint">Sorts files into year-named subfolders
+                       (2021/, 2022/, …) based on dates found in filenames and
+                       document content.</p>
+                </div>
+                <div class="rlg-pl-toggle-target" id="pl-organize-fields">
+                    <div class="rlg-section-flex">
+                        <div class="rlg-form-group">
+                            <label>Min Year</label>
+                            <input type="number" name="min_year" value="1900"
+                                   min="1800" max="2100">
+                        </div>
+                        <div class="rlg-form-group">
+                            <label>Max Year</label>
+                            <input type="number" name="max_year" value="2100"
+                                   min="1800" max="2200">
+                        </div>
+                        <div class="rlg-form-group">
+                            <label>Year Policy</label>
+                            <select name="year_policy">
+                                <option value="earliest">Earliest date in document</option>
+                                <option value="latest">Latest date in document</option>
+                                <option value="filename">Filename date only</option>
+                            </select>
+                        </div>
+                        <div class="rlg-form-group">
+                            <label>Unknown Folder</label>
+                            <input type="text" name="unknown_folder" value="Unknown"
+                                   placeholder="Unknown">
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 5 · BATES -------------------------------------------------- -->
+            <section class="rlg-section-card">
+                <div class="rlg-section-card-header">
+                    <span class="rlg-step-badge">5</span>
+                    <span class="rlg-step-title">Bates Stamp</span>
+                </div>
                 <div class="rlg-form-group rlg-checkbox-toggle">
                     <label class="rlg-pl-toggle-label">
                         <input type="checkbox" name="enable_bates" id="pl-enable-bates"
@@ -574,57 +708,12 @@ function rlg_shortcode_pipeline($atts) {
                 </div>
             </section>
 
-            <!-- REDACT ----------------------------------------------------- -->
-            <section class="rlg-section-flex rlg-divider">
-                <h4>4 · Redact</h4>
-                <div class="rlg-form-group rlg-checkbox-toggle">
-                    <label class="rlg-pl-toggle-label">
-                        <input type="checkbox" name="enable_redact" id="pl-enable-redact"
-                               value="true">
-                        <span class="rlg-pl-toggle-switch"></span>
-                        Enable Redaction
-                    </label>
-                    <p class="rlg-pl-hint">You will be able to add more patterns in the
-                       Review step if anything is missed.</p>
+            <!-- 6 · DISCOVERY INDEX ---------------------------------------- -->
+            <section class="rlg-section-card">
+                <div class="rlg-section-card-header">
+                    <span class="rlg-step-badge">6</span>
+                    <span class="rlg-step-title">Discovery Index</span>
                 </div>
-                <div class="rlg-pl-toggle-target" id="pl-redact-fields" style="display:none">
-                    <div class="rlg-form-group">
-                        <label>Presets</label>
-                        <div class="rlg-checkbox-group">
-                            <label><input type="checkbox" name="presets" value="SSN">
-                                Social Security Number (SSN)</label>
-                            <label><input type="checkbox" name="presets" value="EIN">
-                                Employer ID Number (EIN)</label>
-                            <label><input type="checkbox" name="presets" value="Credit Card">
-                                Credit Card Number</label>
-                            <label><input type="checkbox" name="presets" value="Date of Birth">
-                                Date of Birth (labeled)</label>
-                            <label><input type="checkbox" name="presets" value="Phone">
-                                Phone Number</label>
-                            <label><input type="checkbox" name="presets" value="Email">
-                                Email Address</label>
-                            <label><input type="checkbox" name="presets" value="Date">
-                                Date (MM/DD/YYYY and variants)</label>
-                            <label><input type="checkbox" name="presets" value="8-digit number">
-                                8-Digit Account / ID Number</label>
-                        </div>
-                    </div>
-                    <div class="rlg-form-group">
-                        <label>Custom Regex (one per line)</label>
-                        <textarea name="regex_patterns" rows="3"
-                                  placeholder="e.g. \bACCT-\d{8}\b"></textarea>
-                    </div>
-                    <div class="rlg-form-group">
-                        <label>Literal Phrases (comma separated)</label>
-                        <input type="text" name="literal_patterns"
-                               placeholder="e.g. John Smith, 123 Main St">
-                    </div>
-                </div>
-            </section>
-
-            <!-- INDEX ------------------------------------------------------ -->
-            <section class="rlg-section-flex rlg-divider">
-                <h4>5 · Discovery Index</h4>
                 <div class="rlg-form-group">
                     <label>Party Name</label>
                     <input type="text" name="party" value="Client">
@@ -920,6 +1009,91 @@ function rlg_shortcode_pipeline($atts) {
 
     /* ---- Color swatch active state for pipeline ---- */
     #pl-color-presets .rlg-color-swatch.active { outline: 2px solid #2563eb; outline-offset: 2px; }
+
+    /* ---- Section cards ---- */
+    .rlg-section-card {
+        background: #fff;
+        border: 1px solid #e5e7eb;
+        border-radius: 8px;
+        padding: 16px 20px;
+        margin-bottom: 12px;
+        box-shadow: 0 1px 2px rgba(0,0,0,.04);
+    }
+    .rlg-section-card-header {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 12px;
+        padding-bottom: 10px;
+        border-bottom: 1px solid #f3f4f6;
+    }
+    .rlg-step-badge {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        background: #2563eb;
+        color: #fff;
+        font-size: 12px;
+        font-weight: 700;
+        flex-shrink: 0;
+    }
+    .rlg-step-title {
+        font-size: 15px;
+        font-weight: 700;
+        color: #111827;
+    }
+    .rlg-pl-optional { color: #9ca3af; font-weight: 400; font-size: 12px; }
+
+    /* ---- Upload card ---- */
+    .rlg-pl-upload-card { margin-bottom: 16px; }
+    .rlg-pl-upload-label { display: block; font-weight: 600; margin-bottom: 8px; }
+
+    /* ---- Output filename row ---- */
+    .rlg-pl-output-row {
+        margin-top: 14px;
+        padding-top: 12px;
+        border-top: 1px solid #f3f4f6;
+    }
+    .rlg-pl-filename-wrap {
+        display: flex;
+        align-items: stretch;
+        max-width: 420px;
+        margin-top: 4px;
+    }
+    .rlg-pl-filename-wrap input {
+        flex: 1;
+        border-radius: 6px 0 0 6px !important;
+        border-right: none !important;
+        margin-bottom: 0;
+    }
+    .rlg-pl-filename-ext {
+        padding: 0 12px;
+        background: #f3f4f6;
+        border: 1px solid #d1d5db;
+        border-left: none;
+        border-radius: 0 6px 6px 0;
+        font-size: 13px;
+        color: #6b7280;
+        display: flex;
+        align-items: center;
+        white-space: nowrap;
+    }
+
+    /* ---- Aggressive redaction row ---- */
+    .rlg-pl-aggressive-row {
+        background: #fff7ed;
+        border: 1px solid #fed7aa;
+        border-radius: 6px;
+        padding: 10px 14px;
+        margin: 8px 0;
+    }
+    /* Orange track when aggressive mode is checked */
+    .rlg-pl-toggle-label input[type="checkbox"]:checked ~ .rlg-toggle-warn::before {
+        background: #ea580c;
+    }
     </style>
     <?php
     return ob_get_clean();

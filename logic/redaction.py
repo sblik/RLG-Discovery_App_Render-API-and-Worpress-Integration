@@ -63,8 +63,8 @@ PRESETS: Dict[str, List[str]] = {
     ],
     "EIN": [
         # Employer Identification Number: XX-XXXXXXX
-        # Context-word check is always enforced in redact_pdf_bytes() to prevent
-        # false positives on case numbers, phone extensions, and similar patterns.
+        # Context-word check enforced by default (require_ssn_context=True).
+        # Set require_ssn_context=False (aggressive mode) to redact without context.
         r"\b\d{2}-\d{7}\b",
     ],
     "Email": [
@@ -354,7 +354,7 @@ def redact_pdf_bytes(
                                 snippet = " ".join(wd for wd in words[lo:hi] if wd)
                                 if not SSN_CONTEXT_WORDS.search(snippet or ""):
                                     continue
-                            if _is_ein_pat(pat):
+                            if require_ssn_context and _is_ein_pat(pat):
                                 lo = max(0, idx-6)
                                 hi = min(len(words), idx+7)
                                 snippet = " ".join(wd for wd in words[lo:hi] if wd)
@@ -420,7 +420,7 @@ def redact_pdf_bytes(
                         continue
                     if require_ssn_context and _is_ssn_pat(pat) and not _passes_ssn_context_text(page_text, m):
                         continue
-                    if _is_ein_pat(pat) and not _passes_ein_context_text(page_text, m):
+                    if require_ssn_context and _is_ein_pat(pat) and not _passes_ein_context_text(page_text, m):
                         continue
                     if keep_last_digits > 0:
                         prefix = prefix_excluding_last_n_digits(s, keep_last_digits)
