@@ -4,3 +4,7 @@ services:
     runtime: docker
     plan: pro
     maxRequestTimeout: 300
+    # Pin to exactly one instance so the in-memory _review_store / _run_store
+    # is never split across multiple containers.  Phase 1 and re-redact/finalize
+    # must reach the same process.  Increase only after migrating to DynamoDB.
+    numInstances: 1
