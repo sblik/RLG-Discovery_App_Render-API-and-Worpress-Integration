@@ -11,6 +11,7 @@ import io
 import json
 import logging
 import os
+import re
 import time
 import uuid
 import zipfile
@@ -1928,9 +1929,14 @@ async def pipeline_download_endpoint(run_id: str) -> Response:
         )
 
     zip_bytes = entry["zip"]
-    # Build a safe download filename from the user-supplied name (if any).
+    # Build the download filename from the user-supplied name (if any).
+    # Collapse any whitespace run (including CR/LF/TAB) to a single underscore —
+    # this prevents header injection via control characters — then drop anything
+    # that isn't word/dash/dot, and trim leading/trailing separators so we never
+    # emit names like ".zip" or "_.zip".
     raw_name  = (entry.get("output_filename") or "").strip()
-    safe_name = re.sub(r'[^\w\s\-.]', '', raw_name).strip()
+    safe_name = re.sub(r"\s+", "_", raw_name)
+    safe_name = re.sub(r"[^\w\-.]", "", safe_name).strip("._")
     if not safe_name:
         safe_name = f"pipeline_output_{run_id[:8]}"
     if not safe_name.lower().endswith(".zip"):
