@@ -5,7 +5,7 @@
  * document workflow in two phases:
  *
  * Phase 1 (POST /pipeline/run):
- *   Upload → Scan → Unlock → OCR → Bates → Redact
+ *   Upload → Scan → Unlock → OCR → Redact → Organize → Bates
  *   Ends with a review_ready event. The stream closes; UI shows Review panel.
  *
  * Review (user action):
@@ -34,13 +34,14 @@
     // The 'review' step is a UI-only pause between Redact and Index.
     // -------------------------------------------------------------------------
     var STAGES = [
-        { key: 'scan',    label: 'Scan',    icon: '🔍' },
-        { key: 'unlock',  label: 'Unlock',  icon: '🔓' },
-        { key: 'ocr',     label: 'OCR',     icon: '👁️'  },
-        { key: 'bates',   label: 'Bates',   icon: '🏷️'  },
-        { key: 'redact',  label: 'Redact',  icon: '⬛' },
-        { key: 'review',  label: 'Review',  icon: '🔍' },  // UI pause
-        { key: 'index',   label: 'Index',   icon: '📋' },
+        { key: 'scan',     label: 'Scan',     icon: '🔍' },
+        { key: 'unlock',   label: 'Unlock',   icon: '🔓' },
+        { key: 'ocr',      label: 'OCR',      icon: '👁️'  },
+        { key: 'redact',   label: 'Redact',   icon: '⬛' },
+        { key: 'organize', label: 'Organize', icon: '📁' },
+        { key: 'bates',    label: 'Bates',    icon: '🏷️'  },
+        { key: 'review',   label: 'Review',   icon: '🔍' },  // UI pause
+        { key: 'index',    label: 'Index',    icon: '📋' },
     ];
 
     // -------------------------------------------------------------------------
@@ -608,9 +609,10 @@
                 break;
 
             case 'review_ready':
-                // Phase 1 complete — store run_id, show review panel
+                // Phase 1 complete — store run_id, show review panel.
+                // Individual stages (redact, organize, bates) are already
+                // marked complete/skip by their own stage_complete/stage_skip events.
                 self.runId = evt.run_id;
-                self._stepComplete('redact', (evt.total_hits || 0) + ' hit(s)');
                 self._stepReview('review', 'Awaiting approval');
                 self._log('');
                 self._log('Phase 1 complete — ' + (evt.total_hits || 0) + ' redaction match(es).', 'rlg-pl-log-ok');
@@ -647,9 +649,10 @@
 
     /** Build a short detail string for the circle from event data. */
     PipelineController.prototype._shortDetail = function (evt) {
-        if (evt.stage === 'bates' && evt.last_num) return '#' + evt.last_num;
-        if (evt.stage === 'redact') return (evt.hits || 0) + ' hits';
-        if (evt.stage === 'ocr'  && evt.failures) return evt.failures + ' err';
+        if (evt.stage === 'bates'    && evt.last_num)  return '#' + evt.last_num;
+        if (evt.stage === 'redact')                    return (evt.hits || 0) + ' hits';
+        if (evt.stage === 'organize' && evt.failures)  return evt.failures + ' err';
+        if (evt.stage === 'ocr'      && evt.failures)  return evt.failures + ' err';
         return '';
     };
 
@@ -795,13 +798,20 @@
         fetch(dlUrl, { method: 'GET', headers: self._authHeaders() })
         .then(function (res) {
             if (!res.ok) throw new Error('Download failed: HTTP ' + res.status);
-            return res.blob();
+            // Read the server's Content-Disposition to get the custom filename.
+            var disposition = res.headers.get('Content-Disposition') || '';
+            var nameMatch   = disposition.match(/filename="?([^";]+)"?/);
+            var dlName      = nameMatch
+                ? nameMatch[1]
+                : 'pipeline_output_' + runId.slice(0, 8) + '.zip';
+            return res.blob().then(function (blob) {
+                return { blob: blob, dlName: dlName };
+            });
         })
-        .then(function (blob) {
-            var objUrl  = URL.createObjectURL(blob);
-            var dlName  = 'pipeline_output_' + runId.slice(0, 8) + '.zip';
+        .then(function (result) {
+            var objUrl  = URL.createObjectURL(result.blob);
             var $anchor = $('<a style="display:none"></a>')
-                .attr('href', objUrl).attr('download', dlName);
+                .attr('href', objUrl).attr('download', result.dlName);
             $('body').append($anchor);
             $anchor[0].click();
             $anchor.remove();
@@ -812,7 +822,7 @@
             // Persistent fallback download button
             self.$dlBtn
                 .attr('href', objUrl)
-                .attr('download', dlName)
+                .attr('download', result.dlName)
                 .text('⬇ Download Again')
                 .show();
         })

@@ -1097,6 +1097,10 @@ async def pipeline_run_endpoint(
     title_text: str = Form("CLIENT NAME - DOCUMENTS"),
     # --- Interactive password collection (from post-scan modal) ---
     passwords_json: str = Form("{}"),         # JSON: {"filename": "password", ...}
+    # --- Aggressive redaction: context-free SSN / EIN matching ---
+    aggressive_redact: bool = Form(False),    # True = redact all 9-digit numbers regardless of context
+    # --- Custom output ZIP filename ---
+    output_filename: str = Form(""),          # e.g. "Jones_v_Marlow" → Jones_v_Marlow.zip
 ) -> StreamingResponse:
     """
     Phase 1 of the pipeline: Unlock → OCR → Redact → Organize → Bates → review_ready.
@@ -1204,6 +1208,7 @@ async def pipeline_run_endpoint(
         "skip_unlock": skip_unlock, "skip_ocr": skip_ocr,
         "skip_redact": skip_redact, "skip_organize": skip_organize,
         "skip_bates": skip_bates, "party": party,
+        "aggressive_redact": aggressive_redact,
     })
 
     # -------------------------------------------------------------------------
@@ -1376,7 +1381,7 @@ async def pipeline_run_endpoint(
                 out_zip, hits, summary = await asyncio.to_thread(
                     logic.process_zip_bytes,
                     in_buf.getvalue(), patterns, keep_last_digits,
-                    require_ssn_context=True,
+                    require_ssn_context=not aggressive_redact,
                 )
                 total_hits = len(hits)
                 redact_failures = summary.get("failures", {})
@@ -1535,14 +1540,16 @@ async def pipeline_run_endpoint(
         # optionally calls /re-redact to catch anything missed, then calls
         # /finalize to run the Index stage and get the final download.
         _review_store[run_id] = {
-            "files":         file_pairs,
-            "bates_records": bates_records,
-            "last_bates_num": last_bates_num,
-            "audit_bytes":   audit_bytes,
-            "report":        report,
-            "party":         party,
-            "title_text":    title_text,
-            "expires":       time.time() + PIPELINE_REVIEW_TTL,
+            "files":             file_pairs,
+            "bates_records":     bates_records,
+            "last_bates_num":    last_bates_num,
+            "audit_bytes":       audit_bytes,
+            "report":            report,
+            "party":             party,
+            "title_text":        title_text,
+            "aggressive_redact": aggressive_redact,
+            "output_filename":   output_filename or "",
+            "expires":           time.time() + PIPELINE_REVIEW_TTL,
         }
 
         logger.info(
@@ -1618,6 +1625,7 @@ async def pipeline_re_redact_endpoint(
 
     file_pairs: List[Tuple[str, bytes]] = review_entry["files"]
     report: logic.PipelineReport = review_entry["report"]
+    aggressive_redact: bool = review_entry.get("aggressive_redact", False)
 
     async def _generate() -> AsyncGenerator[str, None]:
         nonlocal file_pairs
@@ -1635,7 +1643,7 @@ async def pipeline_re_redact_endpoint(
             out_zip, hits, summary = await asyncio.to_thread(
                 logic.process_zip_bytes,
                 in_buf.getvalue(), patterns, keep_last_digits,
-                require_ssn_context=True,
+                require_ssn_context=not aggressive_redact,
             )
             redact_failures = summary.get("failures", {})
             hits_by_file: Dict[str, int] = {}
@@ -1733,6 +1741,7 @@ async def pipeline_finalize_endpoint(run_id: str) -> StreamingResponse:
     report: logic.PipelineReport = review_entry["report"]
     party: str = review_entry["party"]
     title_text: str = review_entry["title_text"]
+    output_filename: str = review_entry.get("output_filename", "")
 
     # Generate a fresh download_run_id for the final ZIP. This is distinct from
     # the run_id used by /review — the same review session produces one
@@ -1844,8 +1853,9 @@ async def pipeline_finalize_endpoint(run_id: str) -> StreamingResponse:
 
         # Store for download; consume the review entry to free memory.
         _run_store[download_run_id] = {
-            "zip": out_buf.getvalue(),
-            "expires": time.time() + PIPELINE_RUN_TTL,
+            "zip":             out_buf.getvalue(),
+            "output_filename": output_filename,
+            "expires":         time.time() + PIPELINE_RUN_TTL,
         }
         del _review_store[run_id]
 
@@ -1902,16 +1912,23 @@ async def pipeline_download_endpoint(run_id: str) -> Response:
         )
 
     zip_bytes = entry["zip"]
+    # Build a safe download filename from the user-supplied name (if any).
+    raw_name  = (entry.get("output_filename") or "").strip()
+    safe_name = re.sub(r'[^\w\s\-.]', '', raw_name).strip()
+    if not safe_name:
+        safe_name = f"pipeline_output_{run_id[:8]}"
+    if not safe_name.lower().endswith(".zip"):
+        safe_name += ".zip"
+
     del _run_store[run_id]  # One-time download: free memory immediately
-    logger.info("GET /pipeline/download: run_id=%s, %.1f KB delivered", run_id, len(zip_bytes) / 1024)
+    logger.info("GET /pipeline/download: run_id=%s, %.1f KB delivered, filename=%r",
+                run_id, len(zip_bytes) / 1024, safe_name)
 
     return Response(
         content=zip_bytes,
         media_type="application/zip",
         headers={
-            "Content-Disposition": (
-                f'attachment; filename="pipeline_output_{run_id[:8]}.zip"'
-            ),
+            "Content-Disposition": f'attachment; filename="{safe_name}"',
             "Content-Length": str(len(zip_bytes)),
         },
     )
