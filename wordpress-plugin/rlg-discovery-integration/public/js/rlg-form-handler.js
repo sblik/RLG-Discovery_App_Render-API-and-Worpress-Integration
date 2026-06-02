@@ -134,7 +134,7 @@
                     var items = pairs.map(function(p) {
                         return '<li>' + esc(p[0]) + ' — ' + esc(p[1]) + '</li>';
                     }).join('');
-                    return '<div class="rlg-status warning" style="margin-top:8px;padding:8px 12px;' +
+                    return '<div class="rlg-status warning" style="margin-top:20px;padding:8px 12px;' +
                            'background:#fef3c7;border:1px solid #f59e0b;border-radius:4px;color:#92400e;">' +
                            '<strong>' + pairs.length + ' file(s) could not be processed:</strong>' +
                            '<ul style="margin:6px 0 0;padding-left:20px;">' + items + '</ul></div>';
