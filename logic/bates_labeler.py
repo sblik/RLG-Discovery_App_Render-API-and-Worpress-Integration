@@ -368,6 +368,33 @@ def walk_and_label(
         # Free input data now that everything is on disk
         input_zip_or_pdfs.clear()
 
+        # Pre-flight: open every staged PDF once with pikepdf to detect
+        # password-protected files in a single pass. We populate `failures`
+        # upfront with a user-friendly reason so X-Failed-Files lists every
+        # encrypted file together (rather than discovering them one at a
+        # time mid-batch) and the main loop can skip them without burning
+        # cycles. Non-encryption open errors are ignored here — the main
+        # loop's existing exception handler will surface them with their
+        # actual reason.
+        if PIKEPDF_AVAILABLE:
+            for dirpath, _dn, filenames in os.walk(staged):
+                rel_dir_pf = str(Path(dirpath).relative_to(staged))
+                for fname in filenames:
+                    if _is_mac_resource_junk(fname) or not fname.lower().endswith(".pdf"):
+                        continue
+                    try:
+                        with pikepdf.open(str(Path(dirpath) / fname)):
+                            pass
+                    except pikepdf.PasswordError:
+                        failures[_norm_rel_path(rel_dir_pf, fname)] = (
+                            "Password-protected — run Unlock first"
+                        )
+                    except Exception:
+                        pass
+            if failures:
+                logger.info("Bates preflight: %d encrypted PDF(s) flagged for skip",
+                            len(failures))
+
         current = start_num
         records: List[BatesRecord] = []
         failed: List[str] = []
@@ -388,6 +415,13 @@ def walk_and_label(
                 src = Path(dirpath) / fname
                 out = out_dir / fname
                 skip_key = _norm_rel_path(rel_dir, fname)
+
+                # Preflight already flagged this file (e.g. password-protected).
+                # `failures[skip_key]` carries the user-friendly reason; skip
+                # without trying to open it again.
+                if skip_key in failures:
+                    failed.append(fname)
+                    continue
 
                 # Smart skip: file already has a detected Bates label, so
                 # pass it through unchanged and record the detected range
