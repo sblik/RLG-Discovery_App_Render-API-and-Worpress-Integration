@@ -1045,6 +1045,9 @@ function rlg_shortcode_pipeline($atts) {
         font-weight: 700;
         color: #111827;
     }
+    @media (prefers-color-scheme: dark) {
+        .rlg-step-title { color: #f1f5f9; }
+    }
     .rlg-pl-optional { color: #9ca3af; font-weight: 400; font-size: 12px; }
 
     /* ---- Upload card ---- */
